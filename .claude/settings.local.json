@@ -1,0 +1,34 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cmake --build build --config Debug)",
+      "Bash(./build/Debug/SolidMesh.exe)",
+      "Bash(cmake --build /c/LBZ/m_dev_projects/SolidMesh/build --config Release)",
+      "Bash(./bin/Release/app/polyhedra_test.exe)",
+      "Bash(grep -v \"^$\")",
+      "Bash(./build/Debug/app/polyhedra_test.exe)",
+      "Bash(./build/app/polyhedra_test.exe)",
+      "Bash(echo \"exit: $?\")",
+      "Bash(echo \"EXIT: $?\")",
+      "Bash(echo \"exit=$?\")",
+      "Read(//tmp/**)",
+      "Bash(cmake -B build -S . -DCMAKE_BUILD_TYPE=Debug)",
+      "Bash(cmake --build build)",
+      "Bash(cmd.exe /c \"cd /d C:\\\\LBZ\\\\m_dev_projects\\\\SolidMesh && bin\\\\Debug\\\\app\\\\polyhedra_test.exe\")",
+      "Bash(cmd.exe /c \"cd /d C:\\\\LBZ\\\\m_dev_projects\\\\SolidMesh && bin\\\\Debug\\\\app\\\\polyhedra_test.exe > C:\\\\Temp\\\\out.txt 2>&1\")",
+      "Read(//c/Temp/**)",
+      "Bash(mkdir -p /c/Temp)",
+      "Bash(cmd.exe /c \"cd /d C:\\\\LBZ\\\\m_dev_projects\\\\SolidMesh && bin\\\\Debug\\\\app\\\\polyhedra_test.exe > C:\\\\Temp\\\\out.txt 2>&1 && echo done\")",
+      "Bash(powershell.exe -Command \"Set-Location 'C:\\\\LBZ\\\\m_dev_projects\\\\SolidMesh'; & '.\\\\bin\\\\Debug\\\\app\\\\polyhedra_test.exe' 2>&1\")",
+      "Bash(powershell.exe -Command 'Set-Location '\\\\''C:\\\\LBZ\\\\m_dev_projects\\\\SolidMesh'\\\\''; $out = & '\\\\''.\\\\bin\\\\Debug\\\\app\\\\polyhedra_test.exe'\\\\'' 2>&1; Write-Host \"EXIT: $LASTEXITCODE\"; $out | ForEach-Object { Write-Host $_ }')",
+      "Bash(bin/Debug/app/polyhedra_test.exe)",
+      "Bash(bin/Release/app/polyhedra_test.exe)",
+      "Bash(./bin/Debug/app/polyhedra_test.exe)",
+      "Bash(echo \"---exit: $?\")",
+      "Bash(\"c:/LBZ/m_dev_projects/SolidMesh/bin/Debug/app/polyhedra_test.exe\")",
+      "Bash(cmd /c \"cd /d c:\\\\LBZ\\\\m_dev_projects\\\\SolidMesh && bin\\\\Debug\\\\app\\\\polyhedra_test.exe\")",
+      "Bash(cmd /c \"cd /d c:\\\\LBZ\\\\m_dev_projects\\\\SolidMesh && bin\\\\Debug\\\\app\\\\polyhedra_test.exe > output.txt 2>&1\")",
+      "Bash(powershell -Command \"Set-Location 'c:\\\\LBZ\\\\m_dev_projects\\\\SolidMesh'; & '.\\\\bin\\\\Debug\\\\app\\\\polyhedra_test.exe' 2>&1\")"
+    ]
+  }
+}
