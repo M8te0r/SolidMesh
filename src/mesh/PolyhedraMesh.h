@@ -29,7 +29,7 @@ struct FaceKeyHash {
     }
 };
 
-// HybridMesh: half-face based hybrid volumetric mesh.
+// Polyhedra: half-face based hybrid volumetric mesh.
 //
 // Supports Tet, Hex, Pyramid, and Prism cells.
 // Half-faces are encoded as HalfFaceID = FaceID*2 + side (see Handles.h).
