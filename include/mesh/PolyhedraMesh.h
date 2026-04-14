@@ -4,7 +4,7 @@
 #include "SlotMap.h"
 #include "MeshEntities.h"
 #include "CellTopology.h"
-#include "linear-algebra/vector3.h"
+#include "math/vector3.h"
 
 #include <array>
 #include <vector>

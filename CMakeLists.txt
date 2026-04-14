@@ -13,12 +13,12 @@ else()
     set(SOLIDMESH_TOP_LEVEL OFF)
 endif()
 
-option(SOLIDMESH_BUILD_APP "Build the SolidMesh sample app." ${SOLIDMESH_TOP_LEVEL})
+option(SOLIDMESH_BUILD_EXAMPLE "Build the SolidMesh sample app." ${SOLIDMESH_TOP_LEVEL})
 
 set(SOLIDMESH_ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
 
-add_subdirectory(src)
+add_subdirectory(include)
 
-if(SOLIDMESH_BUILD_APP)
-    add_subdirectory(app)
+if(SOLIDMESH_BUILD_EXAMPLE)
+    add_subdirectory(example)
 endif()

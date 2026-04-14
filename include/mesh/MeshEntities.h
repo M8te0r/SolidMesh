@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Handles.h"
-#include "linear-algebra/vector3.h"
+#include "math/vector3.h"
 #include <array>
 #include <cstdint>
 

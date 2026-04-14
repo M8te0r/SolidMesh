@@ -2,7 +2,7 @@
 #include <cassert>
 #include "mesh/PolyhedraMesh.h"
 #include "mesh/EdgeIterator.h"
-#include "mesh/TopologyOps.h"
+#include "TopologyOperations.h"
 #include "mesh/MeshIO.h"
 
 using namespace SolidMesh;

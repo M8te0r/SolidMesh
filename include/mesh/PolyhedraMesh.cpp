@@ -53,11 +53,11 @@ CellID Polyhedra::add_cell(CellType type, const VertexID* verts, uint32_t vcount
     // Insert cell first to get its ID (we'll fill hfaces next)
     CellID cid = cells_.insert(c);
 
-    const FaceDesc* table = face_table_for(type);
+    const FaceDescriptor* table = face_table_for(type);
     uint32_t nf = face_count_for(type);
 
     for (uint32_t fi = 0; fi < nf; ++fi) {
-        const FaceDesc& fd = table[fi];
+        const FaceDescriptor& fd = table[fi];
         VertexID fverts[4];
         for (uint32_t k = 0; k < fd.vcount; ++k)
             fverts[k] = verts[fd.local_verts[k]];
