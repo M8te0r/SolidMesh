@@ -1,6 +1,6 @@
 #pragma once
 
-#include "MeshEntities.h"
+#include "mesh_entities.h"
 #include <cstdint>
 
 namespace SolidMesh {

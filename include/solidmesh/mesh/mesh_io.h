@@ -1,6 +1,6 @@
 #pragma once
 
-#include "PolyhedraMesh.h"
+#include "polyhedra_mesh.h"
 #include <string>
 
 namespace SolidMesh {

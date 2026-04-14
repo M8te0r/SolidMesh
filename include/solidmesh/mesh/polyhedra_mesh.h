@@ -1,10 +1,10 @@
 #pragma once
 
-#include "Handles.h"
-#include "SlotMap.h"
-#include "MeshEntities.h"
-#include "CellTopology.h"
-#include "math/vector3.h"
+#include "handles.h"
+#include "slot_map.h"
+#include "mesh_entities.h"
+#include "cell_topology.h"
+#include "solidmesh/math/vector3.h"
 
 #include <array>
 #include <vector>

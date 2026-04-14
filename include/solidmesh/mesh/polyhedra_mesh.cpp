@@ -1,5 +1,5 @@
-#include "PolyhedraMesh.h"
-#include "EdgeIterator.h"
+#include "polyhedra_mesh.h"
+#include "edge_iterator.h"
 #include <algorithm>
 #include <cassert>
 

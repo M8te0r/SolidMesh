@@ -1,9 +1,9 @@
 #include <iostream>
 #include <cassert>
-#include "mesh/PolyhedraMesh.h"
-#include "mesh/EdgeIterator.h"
-#include "TopologyOperations.h"
-#include "mesh/MeshIO.h"
+#include "solidmesh/mesh/polyhedra_mesh.h"
+#include "solidmesh/mesh/edge_iterator.h"
+#include "solidmesh/topology_operations.h"
+#include "solidmesh/mesh/mesh_io.h"
 
 using namespace SolidMesh;
 

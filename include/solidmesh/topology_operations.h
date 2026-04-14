@@ -1,6 +1,6 @@
 #pragma once
 
-#include "mesh/PolyhedraMesh.h"
+#include "solidmesh/mesh/polyhedra_mesh.h"
 #include <array>
 #include <vector>
 

@@ -1,5 +1,5 @@
-#include "TopologyOperations.h"
-#include "mesh/EdgeIterator.h"
+#include "topology_operations.h"
+#include "solidmesh/mesh/edge_iterator.h"
 #include <algorithm>
 #include <cassert>
 
