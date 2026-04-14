@@ -1,118 +1,113 @@
 #include <iostream>
-#include <cassert>
 #include "solidmesh/mesh/polyhedra_mesh.h"
-#include "solidmesh/mesh/edge_iterator.h"
-#include "solidmesh/topology_operations.h"
 #include "solidmesh/mesh/mesh_io.h"
 
 using namespace SolidMesh;
 
-void SimpleTwoMeshTest()
-{
-    Polyhedra mesh;
+void SimpleExample(){
+    PolyhedraMesh mesh;
 
-    // Build a simple 2-tet mesh sharing one face.
+    // Build a simple mesh of two tetrahedra sharing one face
     //
-    //       v3
+    //       3
     //      /|\
     //     / | \
     //    /  |  \
-    //   v0--v2--v1
+    //   0---1---4
     //    \  |  /
     //     \ | /
     //      \|/
-    //       v4
+    //       2
     //
-    // Tet A: v0, v1, v2, v3  (top)
-    // Tet B: v0, v2, v1, v4  (bottom, shares face v0-v1-v2 with A)
+    // Tet A: 0,1,2,3
+    // Tet B: 1,4,2,3  (shares face 1,2,3 with Tet A)
 
-    VertexID v0 = mesh.add_vertex(Vector3{0.0, 0.0, 0.0});
-    VertexID v1 = mesh.add_vertex(Vector3{2.0, 0.0, 0.0});
-    VertexID v2 = mesh.add_vertex(Vector3{1.0, 1.0, 0.0});
-    VertexID v3 = mesh.add_vertex(Vector3{1.0, 0.5, 1.5});  // apex top
-    VertexID v4 = mesh.add_vertex(Vector3{1.0, 0.5, -1.5}); // apex bottom
+    auto v0 = mesh.add_vertex({-1,  0, -1});
+    auto v1 = mesh.add_vertex({ 0,  0,  0});
+    auto v2 = mesh.add_vertex({ 0, -1,  0});
+    auto v3 = mesh.add_vertex({ 0,  1,  0});
+    auto v4 = mesh.add_vertex({ 1,  0, -1});
 
-    CellID tetA = mesh.add_tet(v0, v1, v2, v3);
-    CellID tetB = mesh.add_tet(v0, v2, v1, v4);
+    auto c0 = mesh.add_cell(CellType::Tet, {v0, v1, v2, v3});
+    auto c1 = mesh.add_cell(CellType::Tet, {v1, v4, v2, v3});
 
-    std::cout << "=== Initial mesh ===\n";
-    std::cout << "Vertices: " << mesh.num_vertices() << "\n";
-    std::cout << "Faces:    " << mesh.num_faces() << "\n";
-    std::cout << "Cells:    " << mesh.num_cells() << "\n";
-    assert(mesh.num_vertices() == 5);
-    assert(mesh.num_cells() == 2);
-    assert(mesh.check_validity());
-    std::cout << "check_validity: PASS\n\n";
+    std::cout << "Mesh: "
+              << mesh.num_vertices() << " vertices, "
+              << mesh.num_cells()    << " cells, "
+              << mesh.num_halffaces()<< " halffaces, "
+              << mesh.num_faces()    << " faces\n\n";
 
-    // Test edge_cells: edge v0-v1 should be shared by both tets
-    {
-        std::vector<CellID> ring;
-        mesh.edge_cells(v0, v1, ring);
-        std::cout << "edge_cells(v0,v1): " << ring.size() << " cells\n";
-        assert(ring.size() == 2);
-        std::cout << "edge_cells: PASS\n\n";
+    // --- Iterate over all cells ---
+    std::cout << "=== Cells ===\n";
+    for (auto cell : mesh.cells()) {
+        std::cout << "  Cell (slot=" << cell.id().slot << ")"
+                  << "  boundary=" << cell.is_boundary() << "\n";
+
+        std::cout << "    vertices:";
+        for (auto v : cell.vertices())
+            std::cout << " " << v.id().slot;
+        std::cout << "\n";
+
+        std::cout << "    adjacent cells:";
+        for (auto nb : cell.adjacent_cells())
+            std::cout << " " << nb.id().slot;
+        std::cout << "\n";
     }
 
-    // Test swap23: replace 2 tets with 3 tets
-    {
-        // Find the shared interior face (the one with two owners)
-        FaceID shared_fid = INVALID_ID;
-        for (uint32_t di = 0; di < mesh.faces_map().size(); ++di)
-        {
-            FaceID fid = mesh.faces_map().id_of(di);
-            const Face &f = mesh.face(fid);
-            if (f.cell[0] != INVALID_ID && f.cell[1] != INVALID_ID)
-            {
-                shared_fid = fid;
-                break;
-            }
-        }
-        assert(shared_fid != INVALID_ID);
-
-        std::array<CellID, 3> new_cells;
-        bool ok = swap23(mesh, make_hf(shared_fid, 0), new_cells);
-        std::cout << "swap23 result: " << (ok ? "OK" : "FAIL") << "\n";
-        assert(ok);
-        std::cout << "Cells after swap23: " << mesh.num_cells() << "\n";
-        assert(mesh.num_cells() == 3);
-        assert(mesh.check_validity());
-        std::cout << "check_validity after swap23: PASS\n\n";
+    // --- Iterate over all halffaces ---
+    std::cout << "\n=== HalfFaces ===\n";
+    for (auto hf : mesh.halffaces()) {
+        std::cout << "  HF (slot=" << hf.id().slot << ")"
+                  << "  boundary=" << hf.is_boundary()
+                  << "  cell=" << hf.cell().id().slot
+                  << "\n";
     }
 
-    // Test edge_split on edge v3-v4 (shared by all 3 new tets)
-    {
-        VertexID new_v;
-        std::vector<CellID> new_cells;
-        bool ok = edge_split(mesh, v3, v4, new_v, new_cells);
-        std::cout << "edge_split(v3,v4) result: " << (ok ? "OK" : "FAIL") << "\n";
-        assert(ok);
-        std::cout << "Cells after edge_split: " << mesh.num_cells() << "\n";
-        assert(mesh.check_validity());
-        std::cout << "check_validity after edge_split: PASS\n\n";
+    // --- Iterate over all vertices ---
+    std::cout << "\n=== Vertices ===\n";
+    for (auto v : mesh.vertices()) {
+        std::cout << "  V (slot=" << v.id().slot << ")"
+                  << "  boundary=" << v.is_boundary()
+                  << "  pos=(" << v.position().x << ","
+                               << v.position().y << ","
+                               << v.position().z << ")\n";
     }
 
-    std::cout << "=== All smoke tests passed ===\n";
+    // --- Validate ---
+    auto report = mesh.validate();
+    std::cout << "\nValidation: " << (report.ok ? "OK" : "FAILED") << "\n";
+    for (const auto& issue : report.issues)
+        std::cout << "  Issue: " << issue.message << "\n";
+
+    // --- Delete a cell and check boundary updates ---
+    std::cout << "\n--- Deleting cell c0 ---\n";
+    mesh.delete_cell(c0);
+    std::cout << "After delete: "
+              << mesh.num_cells() << " cells, "
+              << mesh.num_halffaces() << " halffaces, "
+              << mesh.num_faces() << " faces\n";
+
+    std::cout << "Remaining cell boundary=" << c1.is_boundary() << "\n";
+
+    auto report2 = mesh.validate();
+    std::cout << "Validation after delete: " << (report2.ok ? "OK" : "FAILED") << "\n";
+    for (const auto& issue : report2.issues)
+        std::cout << "  Issue: " << issue.message << "\n";
 }
 
-void VtkReadTest(const std::string& path) {
-    std::cout << "\n=== VTK read: " << path << " ===\n";
-    Polyhedra mesh;
-    bool ok = MeshIO::read_vtk(path, mesh);
-    if (!ok) {
-        std::cout << "read_vtk FAILED\n";
-        return;
+int main() {
+    std::string path="assets/bpgc.vtk";
+    PolyhedraMesh mesh;
+    
+    if(!MeshIO::read_vtk(path,mesh)){
+        printf("Read .vtk FAILED!\n");
+        return 0;
     }
-    std::cout << "Vertices: " << mesh.num_vertices() << "\n";
-    std::cout << "Faces:    " << mesh.num_faces()    << "\n";
-    std::cout << "Cells:    " << mesh.num_cells()    << "\n";
-    assert(mesh.check_validity());
-    std::cout << "check_validity: PASS\n";
-}
 
-int main()
-{
-    SimpleTwoMeshTest();
-    VtkReadTest("assets/Ankle_1.vtk");
-    VtkReadTest("assets/bpgc.vtk");
+    std::cout << "Mesh: "
+              << mesh.num_vertices() << " vertices, "
+              << mesh.num_cells()    << " cells, "
+              << mesh.num_halffaces()<< " halffaces, "
+              << mesh.num_faces()    << " faces\n\n";
     return 0;
 }

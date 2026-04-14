@@ -1,34 +1,33 @@
 #pragma once
-
 #include <cstdint>
+#include <limits>
 
 namespace SolidMesh {
 
-// ---- ID typedefs ----
-using VertexID   = uint32_t;
-using FaceID     = uint32_t;
-using HalfFaceID = uint32_t;
-using CellID     = uint32_t;
+constexpr uint32_t INVALID_SLOT = std::numeric_limits<uint32_t>::max();
 
-// Packed (min_v, max_v) edge key — not a SlotMap ID
-using EdgeKey = uint64_t;
+// Generation-based stable handles. slot+generation together uniquely identify
+// a live entity; a stale handle (pointing to a recycled slot) is detectable
+// because the generation won't match.
 
-constexpr uint32_t INVALID_ID = ~uint32_t(0);
+#define SM_DEFINE_ID(Name)                                                  \
+    struct Name {                                                            \
+        uint32_t slot       = INVALID_SLOT;                                 \
+        uint32_t generation = 0;                                            \
+        bool is_valid() const noexcept { return slot != INVALID_SLOT; }    \
+        bool operator==(const Name& o) const noexcept {                    \
+            return slot == o.slot && generation == o.generation;            \
+        }                                                                    \
+        bool operator!=(const Name& o) const noexcept {                    \
+            return !(*this == o);                                            \
+        }                                                                    \
+    };
 
-// ---- HalfFaceID encoding ----
-// HalfFaceID = FaceID * 2 + side   (side = 0 or 1)
-// cell[side] is the owning cell of that half-face.
-// Winding: side-0 half-face has CCW vertices as seen from outside cell[0].
+SM_DEFINE_ID(VertexID)
+SM_DEFINE_ID(FaceID)
+SM_DEFINE_ID(HalfFaceID)
+SM_DEFINE_ID(CellID)
 
-inline FaceID     face_of(HalfFaceID hf)         { return hf >> 1; }
-inline int        side_of(HalfFaceID hf)          { return static_cast<int>(hf & 1u); }
-inline HalfFaceID make_hf(FaceID f, int side)     { return (f << 1) | static_cast<uint32_t>(side); }
-inline HalfFaceID opposite_hf(HalfFaceID hf)     { return hf ^ 1u; }
-
-// ---- EdgeKey helpers ----
-inline EdgeKey make_edge_key(VertexID a, VertexID b) {
-    if (a > b) { VertexID t = a; a = b; b = t; }
-    return (static_cast<EdgeKey>(a) << 32) | static_cast<EdgeKey>(b);
-}
+#undef SM_DEFINE_ID
 
 } // namespace SolidMesh

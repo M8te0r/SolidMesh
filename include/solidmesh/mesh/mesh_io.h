@@ -13,13 +13,11 @@ namespace SolidMesh {
 //     Unsupported cell types (e.g. lines, triangles) are silently skipped.
 //
 // Usage:
-//   Polyhedra mesh;
+//   PolyhedraMesh mesh;
 //   bool ok = MeshIO::read_vtk("path/to/file.vtk", mesh);
 class MeshIO {
 public:
-    // Read a VTK Legacy ASCII Unstructured Grid file into mesh.
-    // Returns true on success. On failure, mesh may be partially populated.
-    static bool read_vtk(const std::string& path, Polyhedra& mesh);
+    static bool read_vtk(const std::string& path, PolyhedraMesh& mesh);
 };
 
 } // namespace SolidMesh

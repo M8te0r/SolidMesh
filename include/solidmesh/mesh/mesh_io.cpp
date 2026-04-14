@@ -1,158 +1,148 @@
-#include "mesh_io.h"
+#include "solidmesh/mesh/mesh_io.h"
+
 #include <fstream>
-#include <sstream>
-#include <stdexcept>
+#include <string>
 #include <vector>
-#include <cstring>
-#include <cctype>
 
 namespace SolidMesh {
 
-// VTK cell type codes relevant to volumetric meshes
-static constexpr int VTK_TETRA   = 10;
-static constexpr int VTK_HEXAHEDRON = 12;
-static constexpr int VTK_PRISM   = 13;  // VTK_WEDGE
-static constexpr int VTK_PYRAMID = 14;
+bool MeshIO::read_vtk(const std::string& path, PolyhedraMesh& mesh) {
+    std::ifstream in(path);
+    if (!in) return false;
 
-// VTK hex vertex order differs from our canonical order.
-// VTK hex: bottom face (v0,v1,v2,v3) CCW from above, top face (v4,v5,v6,v7).
-// Our Hex: same convention — no reordering needed.
-//
-// VTK prism (wedge): bottom tri (v0,v1,v2), top tri (v3,v4,v5).
-// Our Prism: same convention — no reordering needed.
-//
-// VTK pyramid: base quad (v0,v1,v2,v3), apex v4.
-// Our Pyramid: same convention — no reordering needed.
-//
-// VTK tet: (v0,v1,v2,v3).
-// Our Tet: same convention — no reordering needed.
-
-static std::string to_upper(std::string s) {
-    for (char& c : s) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
-    return s;
-}
-
-bool MeshIO::read_vtk(const std::string& path, Polyhedra& mesh) {
-    std::ifstream f(path);
-    if (!f.is_open()) return false;
-
+    // Legacy VTK header (4 lines):
+    //   # vtk DataFile Version x.x
+    //   <title>
+    //   ASCII
+    //   DATASET UNSTRUCTURED_GRID
     std::string line;
-
-    // ---- Header: 3 fixed lines ----
-    // Line 1: "# vtk DataFile Version X.Y"
-    // Line 2: title (ignored)
-    // Line 3: "ASCII" or "BINARY"
-    std::getline(f, line);  // version
-    std::getline(f, line);  // title
-    std::getline(f, line);  // ASCII/BINARY
-    if (to_upper(line).find("ASCII") == std::string::npos) return false;
-
-    // Line 4: "DATASET UNSTRUCTURED_GRID"
-    std::getline(f, line);
-    if (to_upper(line).find("UNSTRUCTURED_GRID") == std::string::npos) return false;
+    if (!std::getline(in, line)) return false;
+    if (!std::getline(in, line)) return false;
+    if (!std::getline(in, line)) return false;
+    if (line.find("ASCII") == std::string::npos && line.find("ascii") == std::string::npos) return false;
+    if (!std::getline(in, line)) return false;
+    if (line.find("UNSTRUCTURED_GRID") == std::string::npos) return false;
 
     std::vector<Vector3> points;
-    std::vector<std::vector<int>> cell_conn;  // raw connectivity lists
+    std::vector<size_t> cell_offsets;
+    std::vector<int> cell_conn;
     std::vector<int> cell_types;
 
-    // ---- Parse sections ----
-    while (std::getline(f, line)) {
-        std::istringstream ss(line);
-        std::string keyword;
-        ss >> keyword;
-        // Skip blank / whitespace-only lines (also handles \r\n endings)
-        if (keyword.empty()) continue;
-        keyword = to_upper(keyword);
+    bool have_points = false;
+    bool have_cells = false;
+    bool have_cell_types = false;
 
-        if (keyword == "POINTS") {
-            uint32_t n_points;
-            std::string dtype;
-            ss >> n_points >> dtype;
-            points.reserve(n_points);
+    std::string token;
+    while (in >> token) {
+        if (token == "POINTS") {
+            size_t num_points = 0;
+            std::string scalar_type;
+            if (!(in >> num_points >> scalar_type)) return false;
 
-            for (uint32_t i = 0; i < n_points; ++i) {
-                double x, y, z;
-                f >> x >> y >> z;
-                points.push_back({x, y, z});
+            points.clear();
+            points.reserve(num_points);
+
+            for (size_t i = 0; i < num_points; ++i) {
+                double x = 0.0, y = 0.0, z = 0.0;
+                if (!(in >> x >> y >> z)) return false;
+                points.push_back(Vector3{x, y, z});
             }
-            // consume rest of last number's line
-            std::getline(f, line);
+            have_points = true;
+            continue;
+        }
 
-        } else if (keyword == "CELLS") {
-            uint32_t n_cells, total_ints;
-            ss >> n_cells >> total_ints;
-            cell_conn.reserve(n_cells);
+        if (token == "CELLS") {
+            size_t num_cells = 0, total_size = 0;
+            if (!(in >> num_cells >> total_size)) return false;
+            if (total_size < num_cells) return false;
 
-            for (uint32_t i = 0; i < n_cells; ++i) {
-                int n;
-                f >> n;
-                std::vector<int> conn(n);
-                for (int k = 0; k < n; ++k) f >> conn[k];
-                cell_conn.push_back(std::move(conn));
+            cell_offsets.clear();
+            cell_offsets.resize(num_cells + 1);
+            cell_conn.clear();
+            cell_conn.reserve(total_size - num_cells);
+
+            size_t consumed = 0;
+            for (size_t ci = 0; ci < num_cells; ++ci) {
+                int nverts = 0;
+                if (!(in >> nverts)) return false;
+                if (nverts < 0) return false;
+
+                cell_offsets[ci] = cell_conn.size();
+                consumed += static_cast<size_t>(nverts) + 1;
+
+                for (int j = 0; j < nverts; ++j) {
+                    int v = -1;
+                    if (!(in >> v)) return false;
+                    if (v < 0) return false;
+                    cell_conn.push_back(v);
+                }
             }
-            std::getline(f, line);
+            cell_offsets[num_cells] = cell_conn.size();
+            if (consumed != total_size) return false;
 
-        } else if (keyword == "CELL_TYPES") {
-            uint32_t n;
-            ss >> n;
-            cell_types.reserve(n);
-            for (uint32_t i = 0; i < n; ++i) {
-                int t;
-                f >> t;
-                cell_types.push_back(t);
+            have_cells = true;
+            continue;
+        }
+
+        if (token == "CELL_TYPES") {
+            size_t num_types = 0;
+            if (!(in >> num_types)) return false;
+
+            cell_types.clear();
+            cell_types.resize(num_types);
+            for (size_t i = 0; i < num_types; ++i) {
+                if (!(in >> cell_types[i])) return false;
             }
-            std::getline(f, line);
 
-        } else {
-            // POINT_DATA, CELL_DATA, etc. — not needed, stop parsing
-            break;
+            have_cell_types = true;
+            if (have_points && have_cells) break;
+            continue;
         }
     }
 
-    if (points.empty()) return false;
-    if (cell_conn.size() != cell_types.size()) return false;
+    if (!have_points || !have_cells || !have_cell_types) return false;
+    if (cell_offsets.empty()) return false;
+    const size_t num_cells = cell_offsets.size() - 1;
+    if (cell_types.size() != num_cells) return false;
 
-    // ---- Populate mesh ----
-    mesh.vertices_map().reserve(static_cast<uint32_t>(points.size()));
-    // VTK point index i -> our VertexID
-    std::vector<VertexID> vid(points.size());
-    for (size_t i = 0; i < points.size(); ++i)
-        vid[i] = mesh.add_vertex(points[i]);
-
-    for (size_t i = 0; i < cell_conn.size(); ++i) {
-        const auto& conn = cell_conn[i];
-        int type = cell_types[i];
-
-        switch (type) {
-            case VTK_TETRA: {
-                if (conn.size() < 4) break;
-                mesh.add_tet(vid[conn[0]], vid[conn[1]], vid[conn[2]], vid[conn[3]]);
-                break;
-            }
-            case VTK_HEXAHEDRON: {
-                if (conn.size() < 8) break;
-                mesh.add_hex(vid[conn[0]], vid[conn[1]], vid[conn[2]], vid[conn[3]],
-                             vid[conn[4]], vid[conn[5]], vid[conn[6]], vid[conn[7]]);
-                break;
-            }
-            case VTK_PRISM: {
-                if (conn.size() < 6) break;
-                mesh.add_prism(vid[conn[0]], vid[conn[1]], vid[conn[2]],
-                               vid[conn[3]], vid[conn[4]], vid[conn[5]]);
-                break;
-            }
-            case VTK_PYRAMID: {
-                if (conn.size() < 5) break;
-                mesh.add_pyramid(vid[conn[0]], vid[conn[1]], vid[conn[2]],
-                                 vid[conn[3]], vid[conn[4]]);
-                break;
-            }
-            default:
-                // Unsupported cell type (lines, triangles, etc.) — skip
-                break;
-        }
+    PolyhedraMesh loaded;
+    std::vector<VertexHandle> vtk_vertices;
+    vtk_vertices.reserve(points.size());
+    for (const Vector3& p : points) {
+        vtk_vertices.push_back(loaded.add_vertex(p));
     }
 
+    std::vector<VertexHandle> cell_verts;
+    cell_verts.reserve(8);
+
+    for (size_t ci = 0; ci < num_cells; ++ci) {
+        CellType ctype;
+        int expected_nverts = 0;
+
+        switch (cell_types[ci]) {
+            case 10: ctype = CellType::Tet;     expected_nverts = 4; break;
+            case 12: ctype = CellType::Hex;     expected_nverts = 8; break;
+            case 13: ctype = CellType::Prism;   expected_nverts = 6; break;
+            case 14: ctype = CellType::Pyramid; expected_nverts = 5; break;
+            default: continue; // Unsupported VTK type -> silently skip.
+        }
+
+        const size_t begin = cell_offsets[ci];
+        const size_t end = cell_offsets[ci + 1];
+        const size_t nv = end - begin;
+        if (nv != static_cast<size_t>(expected_nverts)) return false;
+
+        cell_verts.clear();
+        for (size_t k = begin; k < end; ++k) {
+            const int vtk_vid = cell_conn[k];
+            if (vtk_vid < 0 || static_cast<size_t>(vtk_vid) >= vtk_vertices.size()) return false;
+            cell_verts.push_back(vtk_vertices[static_cast<size_t>(vtk_vid)]);
+        }
+
+        if (!loaded.add_cell(ctype, cell_verts).is_valid()) return false;
+    }
+
+    mesh = std::move(loaded);
     return true;
 }
 
