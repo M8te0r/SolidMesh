@@ -1,4 +1,5 @@
 #include <iostream>
+#include <chrono>
 #include "solidmesh/mesh/polyhedra_mesh.h"
 #include "solidmesh/mesh/mesh_io.h"
 
@@ -97,6 +98,9 @@ void SimpleExample(){
 
 int main() {
     std::string path="assets/bpgc.vtk";
+
+    // start time
+    auto start = std::chrono::high_resolution_clock::now();
     PolyhedraMesh mesh;
     
     if(!MeshIO::read_vtk(path,mesh)){
@@ -104,10 +108,18 @@ int main() {
         return 0;
     }
 
+    // end time
+    auto end = std::chrono::high_resolution_clock::now();
+
+    // time cost, ms
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+
     std::cout << "Mesh: "
               << mesh.num_vertices() << " vertices, "
               << mesh.num_cells()    << " cells, "
               << mesh.num_halffaces()<< " halffaces, "
-              << mesh.num_faces()    << " faces\n\n";
+              << mesh.num_faces()    << " faces\n";
+    std::cout << "Time cost: " << duration.count() << " ms\n\n";
+
     return 0;
 }
