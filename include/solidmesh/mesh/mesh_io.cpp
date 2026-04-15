@@ -3,6 +3,7 @@
 #include <fstream>
 #include <string>
 #include <vector>
+#include <unordered_map>
 
 namespace SolidMesh {
 
@@ -143,6 +144,78 @@ bool MeshIO::read_vtk(const std::string& path, PolyhedraMesh& mesh) {
     }
 
     mesh = std::move(loaded);
+    return true;
+}
+
+bool MeshIO::write_vtk(const std::string& path, const PolyhedraMesh& mesh) {
+    std::ofstream out(path);
+    if (!out) return false;
+
+    out << "# vtk DataFile Version 3.0\n";
+    out << "SolidMesh export\n";
+    out << "ASCII\n";
+    out << "DATASET UNSTRUCTURED_GRID\n";
+
+    // Write points
+    std::size_t num_points = mesh.num_vertices();
+    out << "POINTS " << num_points << " double\n";
+
+    std::unordered_map<uint32_t, size_t> slot_to_idx;
+    slot_to_idx.reserve(num_points);
+
+    size_t idx = 0;
+    for (auto vh : mesh.vertices()) {
+        const Vector3 p = vh.position();
+        out << p.x << " " << p.y << " " << p.z << "\n";
+        slot_to_idx[vh.id().slot] = idx++;
+    }
+
+    // Collect cells (only supported cell types)
+    std::vector<std::vector<size_t>> cells;
+    std::vector<int> cell_types;
+    cells.reserve(mesh.num_cells());
+    cell_types.reserve(mesh.num_cells());
+
+    for (auto ch : mesh.cells()) {
+        CellType ct = ch.type();
+        int vtk_type = -1;
+        switch (ct) {
+            case CellType::Tet:     vtk_type = 10; break;
+            case CellType::Hex:     vtk_type = 12; break;
+            case CellType::Prism:   vtk_type = 13; break;
+            case CellType::Pyramid: vtk_type = 14; break;
+            default: vtk_type = -1; break;
+        }
+        if (vtk_type < 0) continue; // skip unsupported
+
+        std::vector<VertexHandle> verts = ch.vertices();
+        std::vector<size_t> cverts;
+        cverts.reserve(verts.size());
+        bool ok = true;
+        for (const auto& vh : verts) {
+            auto it = slot_to_idx.find(vh.id().slot);
+            if (it == slot_to_idx.end()) { ok = false; break; }
+            cverts.push_back(it->second);
+        }
+        if (!ok) return false;
+        cells.push_back(std::move(cverts));
+        cell_types.push_back(vtk_type);
+    }
+
+    const size_t num_cells = cells.size();
+    size_t total_size = 0;
+    for (const auto& c : cells) total_size += c.size() + 1;
+
+    out << "\nCELLS " << num_cells << " " << total_size << "\n";
+    for (const auto& c : cells) {
+        out << c.size();
+        for (size_t v : c) out << " " << v;
+        out << "\n";
+    }
+
+    out << "\nCELL_TYPES " << num_cells << "\n";
+    for (int ct : cell_types) out << ct << "\n";
+
     return true;
 }
 
