@@ -1,0 +1,3 @@
+file(GLOB POLYHEDRA_SOURCES CONFIGURE_DEPENDS "*.cpp")
+
+target_sources(polyhedra-core PRIVATE ${POLYHEDRA_SOURCES})

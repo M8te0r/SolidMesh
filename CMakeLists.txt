@@ -18,6 +18,7 @@ option(SOLIDMESH_BUILD_EXAMPLE "Build the SolidMesh sample app." ${SOLIDMESH_TOP
 set(SOLIDMESH_ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
 
 add_subdirectory(include)
+add_subdirectory(src)
 
 if(SOLIDMESH_BUILD_EXAMPLE)
     add_subdirectory(example)

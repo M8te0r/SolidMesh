@@ -20,18 +20,15 @@ static std::vector<VertexID> oriented_vertices(const Face& face, uint8_t orienta
 }
 
 // Compute the orientation encoding that maps face.vertices -> hf_verts.
-// Returns 0xFF if no valid encoding found (should never happen for valid input).
 static uint8_t compute_orientation(const std::vector<VertexID>& face_verts,
                                    const std::vector<VertexID>& hf_verts) {
     const int n = static_cast<int>(face_verts.size());
-    // Try forward rotations
     for (int start = 0; start < n; ++start) {
         bool match = true;
         for (int i = 0; i < n; ++i)
             if (face_verts[(start + i) % n] != hf_verts[i]) { match = false; break; }
         if (match) return static_cast<uint8_t>(start);
     }
-    // Try flipped rotations (flip flag = 0x10)
     for (int start = 0; start < n; ++start) {
         bool match = true;
         for (int i = 0; i < n; ++i)
@@ -109,8 +106,13 @@ CellHandle PolyhedraMesh::add_cell(CellType type,
 
         auto it = face_map_.find(key);
         if (it == face_map_.end()) {
+            // Build canonical ring from key slots + hf_verts
             Face face;
-            face.vertices = key.vertices; // canonical ring
+            face.vertices.resize(fd.size);
+            for (int i = 0; i < fd.size; ++i)
+                for (const auto& vid : hf_verts)
+                    if (vid.slot == key.slots[i]) { face.vertices[i] = vid; break; }
+
             FaceID fid = faces_.insert(face);
             face_map_[key] = fid;
 
@@ -129,12 +131,16 @@ CellHandle PolyhedraMesh::add_cell(CellType type,
         }
     }
 
-    // Update vertex seeds — use local cell data, no global scan needed
+    // Update vertex seeds and vertex_cell_adj_
     const Cell& built_cell = cells_.get(cid);
     for (int vi = 0; vi < static_cast<int>(vids.size()); ++vi) {
-        Vertex& v = vertices_.get(vids[vi]);
+        VertexID vid = vids[vi];
+
+        // Mesh-layer adjacency (not stored in Vertex struct)
+        vertex_cell_adj_[vid.slot].push_back(cid);
+
+        Vertex& v = vertices_.get(vid);
         if (v.one_halfface.is_valid()) continue;
-        // Find any halfface of this cell that contains vids[vi]
         for (int fi = 0; fi < topo.num_faces; ++fi) {
             const FaceLocalDesc& fd = topo.faces[fi];
             for (int k = 0; k < fd.size; ++k) {
@@ -159,6 +165,17 @@ bool PolyhedraMesh::delete_cell(CellHandle ch) {
     CellID cid = ch.id();
     Cell cell  = cells_.get(cid); // copy before erasing
 
+    // Remove from vertex_cell_adj_ (mesh-layer, not element-layer)
+    for (VertexID vid : cell.vertices) {
+        auto it = vertex_cell_adj_.find(vid.slot);
+        if (it != vertex_cell_adj_.end()) {
+            auto& vec = it->second;
+            for (size_t i = 0; i < vec.size(); ++i) {
+                if (vec[i] == cid) { vec[i] = vec.back(); vec.pop_back(); break; }
+            }
+        }
+    }
+
     for (HalfFaceID hfid : cell.halffaces) {
         HalfFace hf = halffaces_.get(hfid); // copy
         FaceID   fid = hf.face;
@@ -166,18 +183,15 @@ bool PolyhedraMesh::delete_cell(CellHandle ch) {
 
         if (face.hf[0] == hfid) {
             if (face.hf[1].is_valid()) {
-                // Interior face becomes boundary
                 face.hf[0] = face.hf[1];
                 face.hf[1] = HalfFaceID{};
             } else {
-                // Was already boundary — remove face entirely
                 FaceKey key = make_face_key(face.vertices);
                 face_map_.erase(key);
                 faces_.erase(fid);
             }
         } else if (face.hf[1] == hfid) {
             face.hf[1] = HalfFaceID{};
-            // face becomes boundary; hf[0] stays
         }
 
         halffaces_.erase(hfid);
@@ -185,7 +199,6 @@ bool PolyhedraMesh::delete_cell(CellHandle ch) {
 
     cells_.erase(cid);
 
-    // Repair vertex seeds that pointed into deleted halffaces
     for (VertexID vid : cell.vertices)
         repair_vertex_seed(vid);
 
@@ -198,30 +211,33 @@ bool PolyhedraMesh::delete_cell(CellHandle ch) {
 
 bool PolyhedraMesh::delete_isolated_vertex(VertexHandle vh) {
     if (!is_valid(vh)) return false;
-    const Vertex& v = vertices_.get(vh.id());
-    if (v.one_halfface.is_valid()) return false; // not isolated
-    vertices_.erase(vh.id());
+    VertexID vid = vh.id();
+    auto it = vertex_cell_adj_.find(vid.slot);
+    if (it != vertex_cell_adj_.end() && !it->second.empty()) return false;
+    if (it != vertex_cell_adj_.end()) vertex_cell_adj_.erase(it);
+    vertices_.erase(vid);
     return true;
 }
 
 // =========================================================================
-// repair_vertex_seed
+// repair_vertex_seed — O(degree) via vertex_cell_adj_
 // =========================================================================
 
 void PolyhedraMesh::repair_vertex_seed(VertexID vid) {
     if (!vertices_.alive(vid)) return;
     Vertex& v = vertices_.get(vid);
 
-    // If current seed is still alive, nothing to do
     if (v.one_halfface.is_valid() && halffaces_.alive(v.one_halfface))
         return;
 
-    v.one_halfface = HalfFaceID{}; // reset
+    v.one_halfface = HalfFaceID{};
 
-    // Search remaining cells for any halfface containing this vertex.
-    // Uses cell topology tables to avoid iterating halfface vertices.
-    for (size_t di = 0; di < cells_.size(); ++di) {
-        const Cell& cell = cells_.dense()[di];
+    auto it = vertex_cell_adj_.find(vid.slot);
+    if (it == vertex_cell_adj_.end()) return;
+
+    for (CellID cid : it->second) {
+        if (!cells_.alive(cid)) continue;
+        const Cell& cell = cells_.get(cid);
         const CellTopologyTraits& topo = get_cell_topology(cell.type);
         for (int vi = 0; vi < static_cast<int>(cell.vertices.size()); ++vi) {
             if (cell.vertices[vi] != vid) continue;
@@ -236,20 +252,22 @@ void PolyhedraMesh::repair_vertex_seed(VertexID vid) {
             }
         }
     }
-    // No incident halfface found — vertex is now isolated
 }
 
 // =========================================================================
 // Validity
 // =========================================================================
 
-bool PolyhedraMesh::is_valid(VertexHandle v) const noexcept {
+bool PolyhedraMesh::is_valid(VertexHandle v)    const noexcept {
     return v.id().is_valid() && vertices_.alive(v.id());
+}
+bool PolyhedraMesh::is_valid(FaceHandle f)      const noexcept {
+    return f.id().is_valid() && faces_.alive(f.id());
 }
 bool PolyhedraMesh::is_valid(HalfFaceHandle hf) const noexcept {
     return hf.id().is_valid() && halffaces_.alive(hf.id());
 }
-bool PolyhedraMesh::is_valid(CellHandle c) const noexcept {
+bool PolyhedraMesh::is_valid(CellHandle c)      const noexcept {
     return c.id().is_valid() && cells_.alive(c.id());
 }
 
@@ -257,10 +275,14 @@ bool PolyhedraMesh::is_valid(CellHandle c) const noexcept {
 // Boundary queries
 // =========================================================================
 
+bool PolyhedraMesh::is_boundary(FaceHandle fh) const {
+    if (!is_valid(fh)) return false;
+    return faces_.get(fh.id()).is_boundary();
+}
+
 bool PolyhedraMesh::is_boundary(HalfFaceHandle hf) const {
     if (!is_valid(hf)) return false;
-    FaceID fid = halffaces_.get(hf.id()).face;
-    return faces_.get(fid).is_boundary();
+    return faces_.get(halffaces_.get(hf.id()).face).is_boundary();
 }
 
 bool PolyhedraMesh::is_boundary(CellHandle ch) const {
@@ -273,22 +295,19 @@ bool PolyhedraMesh::is_boundary(CellHandle ch) const {
 
 bool PolyhedraMesh::is_boundary(VertexHandle vh) const {
     if (!is_valid(vh)) return false;
-    const Vertex& v = vertices_.get(vh.id());
-    if (!v.one_halfface.is_valid()) return false; // isolated vertex
-
-    // Walk all cells containing this vertex via the cell pool,
-    // checking each of their halffaces for boundary status.
-    // This avoids the O(N) halfface scan by using cell.vertices membership.
     VertexID vid = vh.id();
-    for (size_t di = 0; di < cells_.size(); ++di) {
-        const Cell& cell = cells_.dense()[di];
-        bool contains = false;
-        for (VertexID cv : cell.vertices)
-            if (cv == vid) { contains = true; break; }
-        if (!contains) continue;
-        for (HalfFaceID hfid : cell.halffaces)
-            if (faces_.get(halffaces_.get(hfid).face).is_boundary())
-                return true;
+    auto it = vertex_cell_adj_.find(vid.slot);
+    if (it == vertex_cell_adj_.end() || it->second.empty()) return false;
+
+    for (CellID cid : it->second) {
+        const Cell& cell = cells_.get(cid);
+        for (HalfFaceID hfid : cell.halffaces) {
+            if (!faces_.get(halffaces_.get(hfid).face).is_boundary()) continue;
+            // Check if this boundary face contains the vertex
+            const Face& face = faces_.get(halffaces_.get(hfid).face);
+            for (VertexID fv : face.vertices)
+                if (fv == vid) return true;
+        }
     }
     return false;
 }
@@ -318,12 +337,9 @@ std::vector<CellHandle> PolyhedraMesh::cell_cells(CellHandle ch) const {
     if (!is_valid(ch)) return result;
     for (HalfFaceID hfid : cells_.get(ch.id()).halffaces) {
         const Face& face = faces_.get(halffaces_.get(hfid).face);
-        // Find the opposite halfface
         HalfFaceID opp = face.hf[0] == hfid ? face.hf[1] : face.hf[0];
-        if (opp.is_valid()) {
-            CellID ncid = halffaces_.get(opp).cell;
-            result.emplace_back(const_cast<PolyhedraMesh*>(this), ncid);
-        }
+        if (opp.is_valid())
+            result.emplace_back(const_cast<PolyhedraMesh*>(this), halffaces_.get(opp).cell);
     }
     return result;
 }
@@ -332,8 +348,7 @@ std::vector<VertexHandle> PolyhedraMesh::halfface_vertices(HalfFaceHandle hf) co
     std::vector<VertexHandle> result;
     if (!is_valid(hf)) return result;
     const HalfFace& hfdata = halffaces_.get(hf.id());
-    const Face& face = faces_.get(hfdata.face);
-    for (VertexID vid : oriented_vertices(face, hfdata.orientation))
+    for (VertexID vid : oriented_vertices(faces_.get(hfdata.face), hfdata.orientation))
         result.emplace_back(const_cast<PolyhedraMesh*>(this), vid);
     return result;
 }
@@ -348,8 +363,97 @@ HalfFaceHandle PolyhedraMesh::halfface_opposite(HalfFaceHandle hf) const {
 
 CellHandle PolyhedraMesh::halfface_cell(HalfFaceHandle hf) const {
     if (!is_valid(hf)) return CellHandle();
-    return CellHandle(const_cast<PolyhedraMesh*>(this),
-                      halffaces_.get(hf.id()).cell);
+    return CellHandle(const_cast<PolyhedraMesh*>(this), halffaces_.get(hf.id()).cell);
+}
+
+FaceHandle PolyhedraMesh::halfface_face(HalfFaceHandle hf) const {
+    if (!is_valid(hf)) return FaceHandle();
+    return FaceHandle(const_cast<PolyhedraMesh*>(this), halffaces_.get(hf.id()).face);
+}
+
+std::vector<VertexHandle> PolyhedraMesh::face_vertices(FaceHandle fh) const {
+    std::vector<VertexHandle> result;
+    if (!is_valid(fh)) return result;
+    for (VertexID vid : faces_.get(fh.id()).vertices)
+        result.emplace_back(const_cast<PolyhedraMesh*>(this), vid);
+    return result;
+}
+
+std::pair<HalfFaceHandle, HalfFaceHandle>
+PolyhedraMesh::face_halffaces(FaceHandle fh) const {
+    if (!is_valid(fh)) return {};
+    const Face& f = faces_.get(fh.id());
+    auto* m = const_cast<PolyhedraMesh*>(this);
+    return {
+        f.hf[0].is_valid() ? HalfFaceHandle(m, f.hf[0]) : HalfFaceHandle(),
+        f.hf[1].is_valid() ? HalfFaceHandle(m, f.hf[1]) : HalfFaceHandle()
+    };
+}
+
+std::vector<CellHandle> PolyhedraMesh::vertex_cells(VertexHandle vh) const {
+    std::vector<CellHandle> result;
+    if (!is_valid(vh)) return result;
+    auto it = vertex_cell_adj_.find(vh.id().slot);
+    if (it == vertex_cell_adj_.end()) return result;
+    result.reserve(it->second.size());
+    for (CellID cid : it->second)
+        result.emplace_back(const_cast<PolyhedraMesh*>(this), cid);
+    return result;
+}
+
+std::vector<HalfFaceHandle> PolyhedraMesh::vertex_halffaces(VertexHandle vh) const {
+    std::vector<HalfFaceHandle> result;
+    if (!is_valid(vh)) return result;
+    VertexID vid = vh.id();
+    auto it = vertex_cell_adj_.find(vid.slot);
+    if (it == vertex_cell_adj_.end()) return result;
+
+    for (CellID cid : it->second) {
+        const Cell& cell = cells_.get(cid);
+        const CellTopologyTraits& topo = get_cell_topology(cell.type);
+        for (int fi = 0; fi < topo.num_faces; ++fi) {
+            const FaceLocalDesc& fd = topo.faces[fi];
+            for (int k = 0; k < fd.size; ++k) {
+                if (cell.vertices[fd.vids[k]] == vid) {
+                    result.emplace_back(const_cast<PolyhedraMesh*>(this), cell.halffaces[fi]);
+                    break;
+                }
+            }
+        }
+    }
+    return result;
+}
+
+std::vector<std::pair<VertexHandle, VertexHandle>>
+PolyhedraMesh::cell_edges(CellHandle ch) const {
+    std::vector<std::pair<VertexHandle, VertexHandle>> result;
+    if (!is_valid(ch)) return result;
+
+    const Cell& cell = cells_.get(ch.id());
+    const CellTopologyTraits& topo = get_cell_topology(cell.type);
+    auto* m = const_cast<PolyhedraMesh*>(this);
+
+    // Deduplicate edges within this cell using sorted slot pairs
+    std::vector<std::pair<uint32_t, uint32_t>> seen;
+    seen.reserve(12); // max edges in a hex
+
+    for (int fi = 0; fi < topo.num_faces; ++fi) {
+        const FaceLocalDesc& fd = topo.faces[fi];
+        for (int k = 0; k < fd.size; ++k) {
+            VertexID va = cell.vertices[fd.vids[k]];
+            VertexID vb = cell.vertices[fd.vids[(k + 1) % fd.size]];
+            uint32_t sa = va.slot, sb = vb.slot;
+            if (sa > sb) std::swap(sa, sb);
+            auto key = std::make_pair(sa, sb);
+            bool found = false;
+            for (const auto& e : seen) if (e == key) { found = true; break; }
+            if (!found) {
+                seen.push_back(key);
+                result.emplace_back(VertexHandle(m, va), VertexHandle(m, vb));
+            }
+        }
+    }
+    return result;
 }
 
 // =========================================================================
@@ -363,7 +467,6 @@ ValidationReport PolyhedraMesh::validate() const {
         report.issues.push_back({t, std::move(msg)});
     };
 
-    // Check vertices
     for (size_t di = 0; di < vertices_.size(); ++di) {
         VertexID vid = vertices_.id_at(di);
         const Vertex& v = vertices_.get(vid);
@@ -374,12 +477,10 @@ ValidationReport PolyhedraMesh::validate() const {
         }
     }
 
-    // Check faces
     for (size_t di = 0; di < faces_.size(); ++di) {
         FaceID fid = faces_.id_at(di);
         const Face& f = faces_.get(fid);
-        int count = (f.hf[0].is_valid() ? 1 : 0) + (f.hf[1].is_valid() ? 1 : 0);
-        if (count == 0) {
+        if (!f.hf[0].is_valid() && !f.hf[1].is_valid()) {
             std::ostringstream ss;
             ss << "Face slot=" << fid.slot << " has zero halffaces";
             issue(ValidationIssue::Type::FaceZeroHalfFaces, ss.str());
@@ -396,7 +497,6 @@ ValidationReport PolyhedraMesh::validate() const {
         }
     }
 
-    // Check halffaces
     for (size_t di = 0; di < halffaces_.size(); ++di) {
         HalfFaceID hfid = halffaces_.id_at(di);
         const HalfFace& hf = halffaces_.get(hfid);
@@ -413,8 +513,6 @@ ValidationReport PolyhedraMesh::validate() const {
             issue(ValidationIssue::Type::HalfFaceBackRefBroken, ss.str());
             continue;
         }
-
-        // Back-reference: cell must list this halfface
         const Cell& cell = cells_.get(hf.cell);
         if (hf.local_face_index >= cell.halffaces.size() ||
             cell.halffaces[hf.local_face_index] != hfid) {
@@ -422,8 +520,6 @@ ValidationReport PolyhedraMesh::validate() const {
             ss << "HalfFace slot=" << hfid.slot << " back-ref to cell broken";
             issue(ValidationIssue::Type::HalfFaceBackRefBroken, ss.str());
         }
-
-        // Face must list this halfface
         const Face& face = faces_.get(hf.face);
         if (face.hf[0] != hfid && face.hf[1] != hfid) {
             std::ostringstream ss;
@@ -432,7 +528,6 @@ ValidationReport PolyhedraMesh::validate() const {
         }
     }
 
-    // Check cells
     for (size_t di = 0; di < cells_.size(); ++di) {
         CellID cid = cells_.id_at(di);
         const Cell& cell = cells_.get(cid);
@@ -465,11 +560,17 @@ ValidationReport PolyhedraMesh::validate() const {
         }
     }
 
-    // Check face_map_ consistency
-    for (const auto& [key, fid] : face_map_) {
-        if (!faces_.alive(fid)) {
-            issue(ValidationIssue::Type::FaceMapInconsistency,
-                  "face_map_ contains stale FaceID");
+    for (const auto& [key, fid] : face_map_)
+        if (!faces_.alive(fid))
+            issue(ValidationIssue::Type::FaceMapInconsistency, "face_map_ contains stale FaceID");
+
+    for (const auto& [slot, cids] : vertex_cell_adj_) {
+        for (CellID cid : cids) {
+            if (!cells_.alive(cid)) {
+                std::ostringstream ss;
+                ss << "vertex_cell_adj_ slot=" << slot << " contains stale CellID";
+                issue(ValidationIssue::Type::VertexAdjInconsistency, ss.str());
+            }
         }
     }
 

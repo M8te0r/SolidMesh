@@ -96,7 +96,52 @@ void SimpleExample(){
         std::cout << "  Issue: " << issue.message << "\n";
 }
 
+void NewAPISmoke() {
+    PolyhedraMesh mesh;
+    auto v0 = mesh.add_vertex({0,0,0});
+    auto v1 = mesh.add_vertex({1,0,0});
+    auto v2 = mesh.add_vertex({0,1,0});
+    auto v3 = mesh.add_vertex({0,0,1});
+    auto v4 = mesh.add_vertex({1,0,1});
+    auto c0 = mesh.add_cell(CellType::Tet, {v0,v1,v2,v3});
+    auto c1 = mesh.add_cell(CellType::Tet, {v1,v4,v2,v3});
+
+    // FaceHandle iteration
+    int boundary_faces = 0;
+    for (auto f : mesh.faces())
+        if (f.is_boundary()) ++boundary_faces;
+    std::cout << "Boundary faces: " << boundary_faces << "\n";
+
+    // vertex_cells
+    auto vcells = mesh.vertex_cells(v1);
+    std::cout << "vertex v1 incident cells: " << vcells.size() << "\n";
+
+    // vertex_halffaces
+    auto vhfs = mesh.vertex_halffaces(v1);
+    std::cout << "vertex v1 incident halffaces: " << vhfs.size() << "\n";
+
+    // cell_edges
+    auto edges = mesh.cell_edges(c0);
+    std::cout << "cell c0 edges: " << edges.size() << "\n";
+
+    // index-based access
+    std::cout << "cell_at(0) valid: " << mesh.cell_at(0).is_valid() << "\n";
+    std::cout << "face_at(0) boundary: " << mesh.face_at(0).is_boundary() << "\n";
+
+    // is_boundary(vertex) via vertex_cell_adj_
+    std::cout << "v1 is_boundary: " << mesh.is_boundary(v1) << "\n";
+
+    auto report = mesh.validate();
+    std::cout << "Validation: " << (report.ok ? "OK" : "FAILED") << "\n";
+    for (const auto& issue : report.issues)
+        std::cout << "  Issue: " << issue.message << "\n";
+}
+
 int main() {
+    SimpleExample();
+    std::cout << "\n=== New API Smoke Test ===\n";
+    NewAPISmoke();
+
     std::string path="assets/bpgc.vtk";
 
     // start time

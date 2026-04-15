@@ -14,14 +14,14 @@ namespace SolidMesh {
 
 class PolyhedraMesh;
 
-// Forward declarations needed for cross-references between handle types
 class VertexHandle;
+class FaceHandle;
 class HalfFaceHandle;
 class CellHandle;
 
 // =========================================================================
 // Lightweight handle wrappers — just (mesh*, ID).
-// All topology queries go through these.
+// All topology queries go through the mesh (mesh-central).
 // =========================================================================
 
 class VertexHandle {
@@ -46,6 +46,29 @@ private:
     VertexID       id_;
 };
 
+class FaceHandle {
+public:
+    FaceHandle() = default;
+    FaceHandle(PolyhedraMesh* m, FaceID id) : mesh_(m), id_(id) {}
+
+    bool    is_valid()    const noexcept;
+    FaceID  id()          const noexcept { return id_; }
+
+    bool    is_boundary() const;
+
+    std::vector<VertexHandle>                      vertices()  const;
+    // hf[0] is always valid; hf[1] is invalid for boundary faces
+    std::pair<HalfFaceHandle, HalfFaceHandle>      halffaces() const;
+
+    bool operator==(const FaceHandle& o) const noexcept { return id_ == o.id_; }
+    bool operator!=(const FaceHandle& o) const noexcept { return id_ != o.id_; }
+    explicit operator bool() const noexcept { return is_valid(); }
+
+private:
+    PolyhedraMesh* mesh_ = nullptr;
+    FaceID         id_;
+};
+
 class HalfFaceHandle {
 public:
     HalfFaceHandle() = default;
@@ -56,6 +79,7 @@ public:
 
     bool          is_boundary() const;
     CellHandle    cell()        const;
+    FaceHandle    face()        const;
     HalfFaceHandle opposite()  const;
 
     std::vector<VertexHandle> vertices() const;
@@ -101,13 +125,13 @@ struct ValidationIssue {
     enum class Type {
         InvalidVertexSeed,
         FaceZeroHalfFaces,
-        FaceThreeOrMoreHalfFaces,
         HalfFaceBackRefBroken,
         CellVertexCountMismatch,
         CellHalfFaceCountMismatch,
         CellHalfFaceBackRefBroken,
         NonManifoldFace,
         FaceMapInconsistency,
+        VertexAdjInconsistency,
     };
     Type        type;
     std::string message;
@@ -119,12 +143,9 @@ struct ValidationReport {
 };
 
 // =========================================================================
-// Range helpers — returned by mesh.cells() / .halffaces() / .vertices()
+// Range helpers — returned by mesh.cells() / .halffaces() / .vertices() / .faces()
 // =========================================================================
 
-// T = internal entity type (Vertex, HalfFace, Cell)
-// Handle = public wrapper type (VertexHandle, HalfFaceHandle, CellHandle)
-// ID = id type (VertexID, HalfFaceID, CellID)
 template<typename T, typename Handle, typename ID>
 class HandleRange {
 public:
@@ -157,7 +178,6 @@ public:
     PolyhedraMesh()  = default;
     ~PolyhedraMesh() = default;
 
-    // Non-copyable (large data structure; use move or explicit clone)
     PolyhedraMesh(const PolyhedraMesh&)            = delete;
     PolyhedraMesh& operator=(const PolyhedraMesh&) = delete;
     PolyhedraMesh(PolyhedraMesh&&)                 = default;
@@ -178,44 +198,54 @@ public:
     // Vertices are NOT deleted; use delete_isolated_vertex afterwards.
     bool delete_cell(CellHandle c);
 
-    // Only succeeds if the vertex has no incident halffaces.
+    // Only succeeds if the vertex has no incident cells.
     bool delete_isolated_vertex(VertexHandle v);
 
     // ---- validity -------------------------------------------------------
 
     bool is_valid(VertexHandle   v)  const noexcept;
+    bool is_valid(FaceHandle     f)  const noexcept;
     bool is_valid(HalfFaceHandle hf) const noexcept;
     bool is_valid(CellHandle     c)  const noexcept;
 
     // ---- boundary queries -----------------------------------------------
 
     bool is_boundary(VertexHandle   v)  const;
+    bool is_boundary(FaceHandle     f)  const;
     bool is_boundary(HalfFaceHandle hf) const;
     bool is_boundary(CellHandle     c)  const;
 
     // ---- element counts -------------------------------------------------
 
     size_t num_vertices()  const noexcept { return vertices_.size(); }
+    size_t num_faces()     const noexcept { return faces_.size(); }
     size_t num_halffaces() const noexcept { return halffaces_.size(); }
     size_t num_cells()     const noexcept { return cells_.size(); }
-    size_t num_faces()     const noexcept { return faces_.size(); }
 
-    // ---- iteration range types (public so callers can use them with auto) --
+    // ---- range iteration ------------------------------------------------
 
-    using VertexRangeT    = HandleRange<Vertex,   VertexHandle,   VertexID>;
-    using HalfFaceRangeT  = HandleRange<HalfFace, HalfFaceHandle, HalfFaceID>;
-    using CellRangeT      = HandleRange<Cell,      CellHandle,     CellID>;
+    using VertexRangeT   = HandleRange<Vertex,   VertexHandle,   VertexID>;
+    using FaceRangeT     = HandleRange<Face,      FaceHandle,     FaceID>;
+    using HalfFaceRangeT = HandleRange<HalfFace,  HalfFaceHandle, HalfFaceID>;
+    using CellRangeT     = HandleRange<Cell,       CellHandle,     CellID>;
 
-    // ---- iteration ------------------------------------------------------
+    VertexRangeT   vertices()  { return {this, &vertices_}; }
+    FaceRangeT     faces()     { return {this, &faces_}; }
+    HalfFaceRangeT halffaces() { return {this, &halffaces_}; }
+    CellRangeT     cells()     { return {this, &cells_}; }
 
-    VertexRangeT    vertices()  { return {this, &vertices_}; }
-    HalfFaceRangeT  halffaces() { return {this, &halffaces_}; }
-    CellRangeT      cells()     { return {this, &cells_}; }
+    VertexRangeT   vertices()  const { return {const_cast<PolyhedraMesh*>(this), &vertices_}; }
+    FaceRangeT     faces()     const { return {const_cast<PolyhedraMesh*>(this), &faces_}; }
+    HalfFaceRangeT halffaces() const { return {const_cast<PolyhedraMesh*>(this), &halffaces_}; }
+    CellRangeT     cells()     const { return {const_cast<PolyhedraMesh*>(this), &cells_}; }
 
-    // const overloads (cast away const — handles are non-mutating in practice)
-    VertexRangeT    vertices()  const { return {const_cast<PolyhedraMesh*>(this), &vertices_}; }
-    HalfFaceRangeT  halffaces() const { return {const_cast<PolyhedraMesh*>(this), &halffaces_}; }
-    CellRangeT      cells()     const { return {const_cast<PolyhedraMesh*>(this), &cells_}; }
+    // ---- index-based access (TBB-friendly) ------------------------------
+    // Access by dense index [0, num_X()). Index is NOT stable across deletions.
+
+    VertexHandle   vertex_at(size_t i)   const;
+    FaceHandle     face_at(size_t i)     const;
+    HalfFaceHandle halfface_at(size_t i) const;
+    CellHandle     cell_at(size_t i)     const;
 
     // ---- mesh-centric topology queries ----------------------------------
 
@@ -226,34 +256,47 @@ public:
     std::vector<VertexHandle>   halfface_vertices(HalfFaceHandle hf) const;
     HalfFaceHandle              halfface_opposite(HalfFaceHandle hf) const;
     CellHandle                  halfface_cell(HalfFaceHandle hf)     const;
+    FaceHandle                  halfface_face(HalfFaceHandle hf)     const;
+
+    std::vector<VertexHandle>                      face_vertices(FaceHandle f)  const;
+    std::pair<HalfFaceHandle, HalfFaceHandle>      face_halffaces(FaceHandle f) const;
+
+    // vertex star queries — O(degree), backed by vertex_cell_adj_
+    std::vector<CellHandle>     vertex_cells(VertexHandle v)     const;
+    std::vector<HalfFaceHandle> vertex_halffaces(VertexHandle v) const;
+
+    // edge export — edges derived from cell topology, no EdgeID stored
+    // Each edge appears once per cell (not deduplicated across cells).
+    std::vector<std::pair<VertexHandle, VertexHandle>> cell_edges(CellHandle c) const;
 
     // ---- validation -----------------------------------------------------
 
     ValidationReport validate() const;
 
-    // ---- internal access (used by handle wrappers) ----------------------
-    // These are public so that the handle wrapper methods (defined below the
-    // class) can call them without friendship boilerplate.
+    // ---- internal pool access (used by handle wrappers) -----------------
 
     EntityPool<Vertex,   VertexID>&   vertex_pool()   { return vertices_; }
+    EntityPool<Face,     FaceID>&     face_pool()     { return faces_; }
     EntityPool<HalfFace, HalfFaceID>& halfface_pool() { return halffaces_; }
     EntityPool<Cell,     CellID>&     cell_pool()     { return cells_; }
-    EntityPool<Face,     FaceID>&     face_pool()     { return faces_; }
 
     const EntityPool<Vertex,   VertexID>&   vertex_pool()   const { return vertices_; }
+    const EntityPool<Face,     FaceID>&     face_pool()     const { return faces_; }
     const EntityPool<HalfFace, HalfFaceID>& halfface_pool() const { return halffaces_; }
     const EntityPool<Cell,     CellID>&     cell_pool()     const { return cells_; }
-    const EntityPool<Face,     FaceID>&     face_pool()     const { return faces_; }
 
 private:
-    EntityPool<Vertex,   VertexID>   vertices_;
-    EntityPool<Face,     FaceID>     faces_;
-    EntityPool<HalfFace, HalfFaceID> halffaces_;
-    EntityPool<Cell,     CellID>     cells_;
+    EntityPool<Vertex,   VertexID>    vertices_;
+    EntityPool<Face,     FaceID>      faces_;
+    EntityPool<HalfFace, HalfFaceID>  halffaces_;
+    EntityPool<Cell,     CellID>      cells_;
 
     std::unordered_map<FaceKey, FaceID, FaceKeyHash> face_map_;
 
-    // Internal helpers
+    // Mesh-layer adjacency: vertex slot -> incident cell IDs.
+    // Maintained by add_cell / delete_cell. Enables O(degree) vertex star queries.
+    std::unordered_map<uint32_t, std::vector<CellID>> vertex_cell_adj_;
+
     void repair_vertex_seed(VertexID vid);
 };
 
@@ -275,6 +318,20 @@ inline bool VertexHandle::is_boundary() const {
     return mesh_->is_boundary(*this);
 }
 
+// FaceHandle
+inline bool FaceHandle::is_valid() const noexcept {
+    return mesh_ && mesh_->is_valid(*this);
+}
+inline bool FaceHandle::is_boundary() const {
+    return mesh_->is_boundary(*this);
+}
+inline std::vector<VertexHandle> FaceHandle::vertices() const {
+    return mesh_->face_vertices(*this);
+}
+inline std::pair<HalfFaceHandle, HalfFaceHandle> FaceHandle::halffaces() const {
+    return mesh_->face_halffaces(*this);
+}
+
 // HalfFaceHandle
 inline bool HalfFaceHandle::is_valid() const noexcept {
     return mesh_ && mesh_->is_valid(*this);
@@ -284,6 +341,9 @@ inline bool HalfFaceHandle::is_boundary() const {
 }
 inline CellHandle HalfFaceHandle::cell() const {
     return mesh_->halfface_cell(*this);
+}
+inline FaceHandle HalfFaceHandle::face() const {
+    return mesh_->halfface_face(*this);
 }
 inline HalfFaceHandle HalfFaceHandle::opposite() const {
     return mesh_->halfface_opposite(*this);
@@ -310,6 +370,20 @@ inline std::vector<HalfFaceHandle> CellHandle::halffaces() const {
 }
 inline std::vector<CellHandle> CellHandle::adjacent_cells() const {
     return mesh_->cell_cells(*this);
+}
+
+// ---- index-based access -------------------------------------------------
+inline VertexHandle PolyhedraMesh::vertex_at(size_t i) const {
+    return VertexHandle(const_cast<PolyhedraMesh*>(this), vertices_.id_at(i));
+}
+inline FaceHandle PolyhedraMesh::face_at(size_t i) const {
+    return FaceHandle(const_cast<PolyhedraMesh*>(this), faces_.id_at(i));
+}
+inline HalfFaceHandle PolyhedraMesh::halfface_at(size_t i) const {
+    return HalfFaceHandle(const_cast<PolyhedraMesh*>(this), halffaces_.id_at(i));
+}
+inline CellHandle PolyhedraMesh::cell_at(size_t i) const {
+    return CellHandle(const_cast<PolyhedraMesh*>(this), cells_.id_at(i));
 }
 
 } // namespace SolidMesh
