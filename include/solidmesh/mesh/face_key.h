@@ -13,7 +13,8 @@ namespace SolidMesh {
 // Algorithm: among all rotations of the forward ring and all rotations of the
 // reversed ring, pick the lexicographically smallest sequence of vertex slots.
 struct FaceKey {
-    std::vector<uint32_t> slots;  // vertex slots in canonical order
+    std::vector<uint32_t> slots;     // vertex slots in canonical order (for hashing)
+    std::vector<VertexID> vertices;  // full VertexIDs in canonical order
 
     bool operator==(const FaceKey& o) const noexcept { return slots == o.slots; }
     bool operator!=(const FaceKey& o) const noexcept { return !(*this == o); }
@@ -21,32 +22,39 @@ struct FaceKey {
 
 inline FaceKey make_face_key(const std::vector<VertexID>& verts) {
     const int n = static_cast<int>(verts.size());
-    std::vector<uint32_t> best;
-    best.reserve(n);
 
-    auto try_rotation = [&](const std::vector<uint32_t>& ring, int start) {
-        std::vector<uint32_t> candidate;
-        candidate.reserve(n);
-        for (int i = 0; i < n; ++i)
-            candidate.push_back(ring[(start + i) % n]);
-        if (best.empty() || candidate < best)
-            best = std::move(candidate);
+    bool best_flip  = false;
+    int  best_start = 0;
+
+    auto slot_at = [&](bool flip, int start, int i) -> uint32_t {
+        return flip ? verts[(start - i + n) % n].slot
+                    : verts[(start + i) % n].slot;
     };
 
-    // Forward ring
-    std::vector<uint32_t> fwd(n);
-    for (int i = 0; i < n; ++i) fwd[i] = verts[i].slot;
+    auto is_better = [&](bool flip, int start) -> bool {
+        for (int i = 0; i < n; ++i) {
+            uint32_t a = slot_at(flip, start, i);
+            uint32_t b = slot_at(best_flip, best_start, i);
+            if (a < b) return true;
+            if (a > b) return false;
+        }
+        return false;
+    };
 
-    // Reverse ring
-    std::vector<uint32_t> rev(n);
-    for (int i = 0; i < n; ++i) rev[i] = verts[n - 1 - i].slot;
-
-    for (int i = 0; i < n; ++i) {
-        try_rotation(fwd, i);
-        try_rotation(rev, i);
+    for (int s = 0; s < n; ++s) {
+        if (is_better(false, s)) { best_flip = false; best_start = s; }
+        if (is_better(true,  s)) { best_flip = true;  best_start = s; }
     }
 
-    return FaceKey{std::move(best)};
+    FaceKey key;
+    key.slots.resize(n);
+    key.vertices.resize(n);
+    for (int i = 0; i < n; ++i) {
+        int idx = best_flip ? (best_start - i + n) % n : (best_start + i) % n;
+        key.slots[i]    = verts[idx].slot;
+        key.vertices[i] = verts[idx];
+    }
+    return key;
 }
 
 struct FaceKeyHash {

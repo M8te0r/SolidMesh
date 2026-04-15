@@ -7,14 +7,12 @@
 
 namespace SolidMesh {
 
-// Flags shared by all entity types
+// User-defined flags (bits 0-3 reserved for future internal use)
 enum EntityFlags : uint32_t {
-    FLAG_DELETED  = 1u << 0,
-    FLAG_BOUNDARY = 1u << 1,   // cached; may be stale after edits
-    FLAG_USER0    = 1u << 16,  // free for application use
-    FLAG_USER1    = 1u << 17,
-    FLAG_USER2    = 1u << 18,
-    FLAG_USER3    = 1u << 19,
+    FLAG_USER0 = 1u << 16,  // free for application use
+    FLAG_USER1 = 1u << 17,
+    FLAG_USER2 = 1u << 18,
+    FLAG_USER3 = 1u << 19,
 };
 
 struct Vertex {
@@ -35,13 +33,15 @@ struct Face {
 };
 
 // A directed view of a Face from one incident Cell.
-// Stores the vertex ring as seen from the cell (oriented outward).
+// The oriented vertex ring is recovered from face.vertices + orientation:
+//   orientation & 0x0F = start offset (rotation)
+//   orientation & 0x10 = flip flag (reverse the ring)
 struct HalfFace {
-    FaceID                face;
-    CellID                cell;
-    uint8_t               local_face_index = 0;
-    std::vector<VertexID> vertices;   // oriented ring as seen from the cell
-    uint32_t              flags = 0;
+    FaceID   face;
+    CellID   cell;
+    uint8_t  local_face_index = 0;
+    uint8_t  orientation      = 0;
+    uint32_t flags            = 0;
 };
 
 struct Cell {

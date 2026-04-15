@@ -4,6 +4,43 @@
 
 namespace SolidMesh {
 
+// Compute the oriented vertex ring of a halfface from its face's canonical ring.
+// orientation & 0x0F = start offset; orientation & 0x10 = flip.
+static std::vector<VertexID> oriented_vertices(const Face& face, uint8_t orientation) {
+    const auto& cv = face.vertices;
+    const int n = static_cast<int>(cv.size());
+    const int start = orientation & 0x0F;
+    const bool flip = (orientation & 0x10) != 0;
+    std::vector<VertexID> result(n);
+    for (int i = 0; i < n; ++i) {
+        int idx = flip ? (start - i + n) % n : (start + i) % n;
+        result[i] = cv[idx];
+    }
+    return result;
+}
+
+// Compute the orientation encoding that maps face.vertices -> hf_verts.
+// Returns 0xFF if no valid encoding found (should never happen for valid input).
+static uint8_t compute_orientation(const std::vector<VertexID>& face_verts,
+                                   const std::vector<VertexID>& hf_verts) {
+    const int n = static_cast<int>(face_verts.size());
+    // Try forward rotations
+    for (int start = 0; start < n; ++start) {
+        bool match = true;
+        for (int i = 0; i < n; ++i)
+            if (face_verts[(start + i) % n] != hf_verts[i]) { match = false; break; }
+        if (match) return static_cast<uint8_t>(start);
+    }
+    // Try flipped rotations (flip flag = 0x10)
+    for (int start = 0; start < n; ++start) {
+        bool match = true;
+        for (int i = 0; i < n; ++i)
+            if (face_verts[(start - i + n) % n] != hf_verts[i]) { match = false; break; }
+        if (match) return static_cast<uint8_t>(0x10 | start);
+    }
+    return 0xFF; // unreachable for valid topology
+}
+
 // =========================================================================
 // add_vertex
 // =========================================================================
@@ -69,39 +106,45 @@ CellHandle PolyhedraMesh::add_cell(CellType type,
         HalfFace hf;
         hf.cell             = cid;
         hf.local_face_index = static_cast<uint8_t>(fi);
-        hf.vertices         = hf_verts;
 
         auto it = face_map_.find(key);
         if (it == face_map_.end()) {
             Face face;
-            face.vertices = hf_verts;
+            face.vertices = key.vertices; // canonical ring
             FaceID fid = faces_.insert(face);
             face_map_[key] = fid;
 
-            hf.face = fid;
+            hf.face        = fid;
+            hf.orientation = compute_orientation(faces_.get(fid).vertices, hf_verts);
             HalfFaceID hfid = halffaces_.insert(hf);
             faces_.get(fid).hf[0] = hfid;
             cells_.get(cid).halffaces[fi] = hfid;
         } else {
             FaceID fid = it->second;
-            hf.face = fid;
+            hf.face        = fid;
+            hf.orientation = compute_orientation(faces_.get(fid).vertices, hf_verts);
             HalfFaceID hfid = halffaces_.insert(hf);
             faces_.get(fid).hf[1] = hfid;
             cells_.get(cid).halffaces[fi] = hfid;
         }
     }
 
-    // Update vertex seeds
-    for (VertexID vid : vids) {
-        Vertex& v = vertices_.get(vid);
-        if (!v.one_halfface.is_valid()) {
-            for (HalfFaceID hfid : cells_.get(cid).halffaces) {
-                for (VertexID hv : halffaces_.get(hfid).vertices) {
-                    if (hv == vid) { v.one_halfface = hfid; goto next_vert; }
+    // Update vertex seeds — use local cell data, no global scan needed
+    const Cell& built_cell = cells_.get(cid);
+    for (int vi = 0; vi < static_cast<int>(vids.size()); ++vi) {
+        Vertex& v = vertices_.get(vids[vi]);
+        if (v.one_halfface.is_valid()) continue;
+        // Find any halfface of this cell that contains vids[vi]
+        for (int fi = 0; fi < topo.num_faces; ++fi) {
+            const FaceLocalDesc& fd = topo.faces[fi];
+            for (int k = 0; k < fd.size; ++k) {
+                if (fd.vids[k] == vi) {
+                    v.one_halfface = built_cell.halffaces[fi];
+                    goto next_vert;
                 }
             }
-            next_vert:;
         }
+        next_vert:;
     }
 
     return CellHandle(this, cid);
@@ -175,13 +218,21 @@ void PolyhedraMesh::repair_vertex_seed(VertexID vid) {
 
     v.one_halfface = HalfFaceID{}; // reset
 
-    // Linear scan to find any halfface containing this vertex
-    for (size_t di = 0; di < halffaces_.size(); ++di) {
-        HalfFaceID hfid = halffaces_.id_at(di);
-        for (VertexID hv : halffaces_.get(hfid).vertices) {
-            if (hv == vid) {
-                v.one_halfface = hfid;
-                return;
+    // Search remaining cells for any halfface containing this vertex.
+    // Uses cell topology tables to avoid iterating halfface vertices.
+    for (size_t di = 0; di < cells_.size(); ++di) {
+        const Cell& cell = cells_.dense()[di];
+        const CellTopologyTraits& topo = get_cell_topology(cell.type);
+        for (int vi = 0; vi < static_cast<int>(cell.vertices.size()); ++vi) {
+            if (cell.vertices[vi] != vid) continue;
+            for (int fi = 0; fi < topo.num_faces; ++fi) {
+                const FaceLocalDesc& fd = topo.faces[fi];
+                for (int k = 0; k < fd.size; ++k) {
+                    if (fd.vids[k] == vi) {
+                        v.one_halfface = cell.halffaces[fi];
+                        return;
+                    }
+                }
             }
         }
     }
@@ -222,17 +273,22 @@ bool PolyhedraMesh::is_boundary(CellHandle ch) const {
 
 bool PolyhedraMesh::is_boundary(VertexHandle vh) const {
     if (!is_valid(vh)) return false;
-    // Linear scan: check all halffaces that contain this vertex
-    for (size_t di = 0; di < halffaces_.size(); ++di) {
-        HalfFaceID hfid = halffaces_.id_at(di);
-        const HalfFace& hf = halffaces_.get(hfid);
-        for (VertexID hv : hf.vertices) {
-            if (hv == vh.id()) {
-                if (faces_.get(hf.face).is_boundary())
-                    return true;
-                break;
-            }
-        }
+    const Vertex& v = vertices_.get(vh.id());
+    if (!v.one_halfface.is_valid()) return false; // isolated vertex
+
+    // Walk all cells containing this vertex via the cell pool,
+    // checking each of their halffaces for boundary status.
+    // This avoids the O(N) halfface scan by using cell.vertices membership.
+    VertexID vid = vh.id();
+    for (size_t di = 0; di < cells_.size(); ++di) {
+        const Cell& cell = cells_.dense()[di];
+        bool contains = false;
+        for (VertexID cv : cell.vertices)
+            if (cv == vid) { contains = true; break; }
+        if (!contains) continue;
+        for (HalfFaceID hfid : cell.halffaces)
+            if (faces_.get(halffaces_.get(hfid).face).is_boundary())
+                return true;
     }
     return false;
 }
@@ -275,7 +331,9 @@ std::vector<CellHandle> PolyhedraMesh::cell_cells(CellHandle ch) const {
 std::vector<VertexHandle> PolyhedraMesh::halfface_vertices(HalfFaceHandle hf) const {
     std::vector<VertexHandle> result;
     if (!is_valid(hf)) return result;
-    for (VertexID vid : halffaces_.get(hf.id()).vertices)
+    const HalfFace& hfdata = halffaces_.get(hf.id());
+    const Face& face = faces_.get(hfdata.face);
+    for (VertexID vid : oriented_vertices(face, hfdata.orientation))
         result.emplace_back(const_cast<PolyhedraMesh*>(this), vid);
     return result;
 }
@@ -329,12 +387,12 @@ ValidationReport PolyhedraMesh::validate() const {
         if (f.hf[0].is_valid() && !halffaces_.alive(f.hf[0])) {
             std::ostringstream ss;
             ss << "Face slot=" << fid.slot << " hf[0] is stale";
-            issue(ValidationIssue::Type::FaceZeroHalfFaces, ss.str());
+            issue(ValidationIssue::Type::HalfFaceBackRefBroken, ss.str());
         }
         if (f.hf[1].is_valid() && !halffaces_.alive(f.hf[1])) {
             std::ostringstream ss;
             ss << "Face slot=" << fid.slot << " hf[1] is stale";
-            issue(ValidationIssue::Type::FaceZeroHalfFaces, ss.str());
+            issue(ValidationIssue::Type::HalfFaceBackRefBroken, ss.str());
         }
     }
 
