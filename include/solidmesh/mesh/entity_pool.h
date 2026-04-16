@@ -16,12 +16,12 @@ namespace SolidMesh {
 //
 // ID must be one of the SM_DEFINE_ID types: {uint32_t slot, uint32_t generation}.
 
-template<typename T, typename ID>
+template<typename EntityType, typename EntityID>
 class EntityPool {
 public:
     // ---- mutation -------------------------------------------------------
 
-    ID insert(T value) {
+    EntityID insert(EntityType value) {
         uint32_t slot;
         if (!free_list_.empty()) {
             slot = free_list_.back();
@@ -39,11 +39,11 @@ public:
         }
         dense_.push_back(std::move(value));
         dense_to_sparse_.push_back(slot);
-        return ID{slot, sparse_[slot].generation};
+        return EntityID{slot, sparse_[slot].generation};
     }
 
     // Erase by ID. No-op if id is stale or invalid.
-    void erase(ID id) {
+    void erase(EntityID id) {
         if (!alive(id)) return;
         uint32_t di = sparse_[id.slot].dense_index;
 
@@ -65,19 +65,19 @@ public:
 
     // ---- query ----------------------------------------------------------
 
-    bool alive(ID id) const noexcept {
+    bool alive(EntityID id) const noexcept {
         if (!id.is_valid()) return false;
         if (id.slot >= sparse_.size()) return false;
         const Slot& s = sparse_[id.slot];
         return s.alive && s.generation == id.generation;
     }
 
-    T& get(ID id) {
+    EntityType& get(EntityID id) {
         assert(alive(id));
         return dense_[sparse_[id.slot].dense_index];
     }
 
-    const T& get(ID id) const {
+    const EntityType& get(EntityID id) const {
         assert(alive(id));
         return dense_[sparse_[id.slot].dense_index];
     }
@@ -92,9 +92,9 @@ public:
         const EntityPool* pool;
         size_t            di;   // dense index
 
-        ID operator*() const {
+        EntityID operator*() const {
             uint32_t slot = pool->dense_to_sparse_[di];
-            return ID{slot, pool->sparse_[slot].generation};
+            return EntityID{slot, pool->sparse_[slot].generation};
         }
         IDIterator& operator++() { ++di; return *this; }
         bool operator!=(const IDIterator& o) const { return di != o.di; }
@@ -110,13 +110,13 @@ public:
     IDRange ids() const { return {this}; }
 
     // Direct dense access (for internal use by Mesh)
-    const std::vector<T>& dense() const { return dense_; }
-    std::vector<T>&       dense()       { return dense_; }
+    const std::vector<EntityType>& dense() const { return dense_; }
+    std::vector<EntityType>&       dense()       { return dense_; }
 
     // Reconstruct ID for a dense index (internal use)
-    ID id_at(size_t di) const {
+    EntityID id_at(size_t di) const {
         uint32_t slot = dense_to_sparse_[di];
-        return ID{slot, sparse_[slot].generation};
+        return EntityID{slot, sparse_[slot].generation};
     }
 
 private:
@@ -126,7 +126,7 @@ private:
         bool     alive;
     };
 
-    std::vector<T>        dense_;
+    std::vector<EntityType>        dense_;
     std::vector<uint32_t> dense_to_sparse_;
     std::vector<Slot>     sparse_;
     std::vector<uint32_t> free_list_;
