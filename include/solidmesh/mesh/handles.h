@@ -16,7 +16,7 @@ constexpr uint32_t INVALID_SLOT = std::numeric_limits<uint32_t>::max();
         uint32_t generation = 0;                                                                \
         bool is_valid() const noexcept { return slot != INVALID_SLOT; }                         \
         uint64_t value() const noexcept{return (static_cast<uint64_t>(generation)<<32)|slot;}   \
-        static Name from_value(uint64_t v) noexcept {                                           \
+        static Name create_from_value(uint64_t v) noexcept {                                    \
             return Name{                                                                        \
                 static_cast<uint32_t>(v & 0xffffffffull),                                       \
                 static_cast<uint32_t>(v >> 32)                                                  \

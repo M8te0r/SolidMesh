@@ -60,7 +60,7 @@ CellHandle PolyhedraMesh::add_cell(CellType type,
     if (static_cast<int>(verts.size()) != topo.num_vertices)
         return CellHandle();
     for (const auto& vh : verts)
-        if (!is_valid(vh)) return CellHandle();
+        if (!is_handle_valid(vh)) return CellHandle();
 
     std::vector<VertexID> vids;
     vids.reserve(verts.size());
@@ -161,7 +161,7 @@ CellHandle PolyhedraMesh::add_cell(CellType type,
 // =========================================================================
 
 bool PolyhedraMesh::delete_cell(CellHandle ch) {
-    if (!is_valid(ch)) return false;
+    if (!is_handle_valid(ch)) return false;
     CellID cid = ch.id();
     Cell cell  = cells_.get(cid); // copy before erasing
 
@@ -210,7 +210,7 @@ bool PolyhedraMesh::delete_cell(CellHandle ch) {
 // =========================================================================
 
 bool PolyhedraMesh::delete_isolated_vertex(VertexHandle vh) {
-    if (!is_valid(vh)) return false;
+    if (!is_handle_valid(vh)) return false;
     VertexID vid = vh.id();
     auto it = vertex_cell_adj_.find(vid.slot);
     if (it != vertex_cell_adj_.end() && !it->second.empty()) return false;
@@ -258,16 +258,16 @@ void PolyhedraMesh::repair_vertex_seed(VertexID vid) {
 // Validity
 // =========================================================================
 
-bool PolyhedraMesh::is_valid(VertexHandle v)    const noexcept {
+bool PolyhedraMesh::is_handle_valid(VertexHandle v)    const noexcept {
     return v.id().is_valid() && vertices_.alive(v.id());
 }
-bool PolyhedraMesh::is_valid(FaceHandle f)      const noexcept {
+bool PolyhedraMesh::is_handle_valid(FaceHandle f)      const noexcept {
     return f.id().is_valid() && faces_.alive(f.id());
 }
-bool PolyhedraMesh::is_valid(HalfFaceHandle hf) const noexcept {
+bool PolyhedraMesh::is_handle_valid(HalfFaceHandle hf) const noexcept {
     return hf.id().is_valid() && halffaces_.alive(hf.id());
 }
-bool PolyhedraMesh::is_valid(CellHandle c)      const noexcept {
+bool PolyhedraMesh::is_handle_valid(CellHandle c)      const noexcept {
     return c.id().is_valid() && cells_.alive(c.id());
 }
 
@@ -276,17 +276,17 @@ bool PolyhedraMesh::is_valid(CellHandle c)      const noexcept {
 // =========================================================================
 
 bool PolyhedraMesh::is_boundary(FaceHandle fh) const {
-    if (!is_valid(fh)) return false;
+    if (!is_handle_valid(fh)) return false;
     return faces_.get(fh.id()).is_boundary();
 }
 
 bool PolyhedraMesh::is_boundary(HalfFaceHandle hf) const {
-    if (!is_valid(hf)) return false;
+    if (!is_handle_valid(hf)) return false;
     return faces_.get(halffaces_.get(hf.id()).face).is_boundary();
 }
 
 bool PolyhedraMesh::is_boundary(CellHandle ch) const {
-    if (!is_valid(ch)) return false;
+    if (!is_handle_valid(ch)) return false;
     for (HalfFaceID hfid : cells_.get(ch.id()).halffaces)
         if (faces_.get(halffaces_.get(hfid).face).is_boundary())
             return true;
@@ -294,7 +294,7 @@ bool PolyhedraMesh::is_boundary(CellHandle ch) const {
 }
 
 bool PolyhedraMesh::is_boundary(VertexHandle vh) const {
-    if (!is_valid(vh)) return false;
+    if (!is_handle_valid(vh)) return false;
     VertexID vid = vh.id();
     auto it = vertex_cell_adj_.find(vid.slot);
     if (it == vertex_cell_adj_.end() || it->second.empty()) return false;
@@ -318,7 +318,7 @@ bool PolyhedraMesh::is_boundary(VertexHandle vh) const {
 
 std::vector<VertexHandle> PolyhedraMesh::cell_vertices(CellHandle ch) const {
     std::vector<VertexHandle> result;
-    if (!is_valid(ch)) return result;
+    if (!is_handle_valid(ch)) return result;
     for (VertexID vid : cells_.get(ch.id()).vertices)
         result.emplace_back(const_cast<PolyhedraMesh*>(this), vid);
     return result;
@@ -326,7 +326,7 @@ std::vector<VertexHandle> PolyhedraMesh::cell_vertices(CellHandle ch) const {
 
 std::vector<HalfFaceHandle> PolyhedraMesh::cell_halffaces(CellHandle ch) const {
     std::vector<HalfFaceHandle> result;
-    if (!is_valid(ch)) return result;
+    if (!is_handle_valid(ch)) return result;
     for (HalfFaceID hfid : cells_.get(ch.id()).halffaces)
         result.emplace_back(const_cast<PolyhedraMesh*>(this), hfid);
     return result;
@@ -334,7 +334,7 @@ std::vector<HalfFaceHandle> PolyhedraMesh::cell_halffaces(CellHandle ch) const {
 
 std::vector<CellHandle> PolyhedraMesh::cell_cells(CellHandle ch) const {
     std::vector<CellHandle> result;
-    if (!is_valid(ch)) return result;
+    if (!is_handle_valid(ch)) return result;
     for (HalfFaceID hfid : cells_.get(ch.id()).halffaces) {
         const Face& face = faces_.get(halffaces_.get(hfid).face);
         HalfFaceID opp = face.hf[0] == hfid ? face.hf[1] : face.hf[0];
@@ -346,7 +346,7 @@ std::vector<CellHandle> PolyhedraMesh::cell_cells(CellHandle ch) const {
 
 std::vector<VertexHandle> PolyhedraMesh::halfface_vertices(HalfFaceHandle hf) const {
     std::vector<VertexHandle> result;
-    if (!is_valid(hf)) return result;
+    if (!is_handle_valid(hf)) return result;
     const HalfFace& hfdata = halffaces_.get(hf.id());
     for (VertexID vid : oriented_vertices(faces_.get(hfdata.face), hfdata.orientation))
         result.emplace_back(const_cast<PolyhedraMesh*>(this), vid);
@@ -354,7 +354,7 @@ std::vector<VertexHandle> PolyhedraMesh::halfface_vertices(HalfFaceHandle hf) co
 }
 
 HalfFaceHandle PolyhedraMesh::halfface_opposite(HalfFaceHandle hf) const {
-    if (!is_valid(hf)) return HalfFaceHandle();
+    if (!is_handle_valid(hf)) return HalfFaceHandle();
     const Face& face = faces_.get(halffaces_.get(hf.id()).face);
     HalfFaceID opp = face.hf[0] == hf.id() ? face.hf[1] : face.hf[0];
     if (!opp.is_valid()) return HalfFaceHandle();
@@ -362,18 +362,18 @@ HalfFaceHandle PolyhedraMesh::halfface_opposite(HalfFaceHandle hf) const {
 }
 
 CellHandle PolyhedraMesh::halfface_cell(HalfFaceHandle hf) const {
-    if (!is_valid(hf)) return CellHandle();
+    if (!is_handle_valid(hf)) return CellHandle();
     return CellHandle(const_cast<PolyhedraMesh*>(this), halffaces_.get(hf.id()).cell);
 }
 
 FaceHandle PolyhedraMesh::halfface_face(HalfFaceHandle hf) const {
-    if (!is_valid(hf)) return FaceHandle();
+    if (!is_handle_valid(hf)) return FaceHandle();
     return FaceHandle(const_cast<PolyhedraMesh*>(this), halffaces_.get(hf.id()).face);
 }
 
 std::vector<VertexHandle> PolyhedraMesh::face_vertices(FaceHandle fh) const {
     std::vector<VertexHandle> result;
-    if (!is_valid(fh)) return result;
+    if (!is_handle_valid(fh)) return result;
     for (VertexID vid : faces_.get(fh.id()).vertices)
         result.emplace_back(const_cast<PolyhedraMesh*>(this), vid);
     return result;
@@ -381,7 +381,7 @@ std::vector<VertexHandle> PolyhedraMesh::face_vertices(FaceHandle fh) const {
 
 std::pair<HalfFaceHandle, HalfFaceHandle>
 PolyhedraMesh::face_halffaces(FaceHandle fh) const {
-    if (!is_valid(fh)) return {};
+    if (!is_handle_valid(fh)) return {};
     const Face& f = faces_.get(fh.id());
     auto* m = const_cast<PolyhedraMesh*>(this);
     return {
@@ -392,7 +392,7 @@ PolyhedraMesh::face_halffaces(FaceHandle fh) const {
 
 std::vector<CellHandle> PolyhedraMesh::vertex_cells(VertexHandle vh) const {
     std::vector<CellHandle> result;
-    if (!is_valid(vh)) return result;
+    if (!is_handle_valid(vh)) return result;
     auto it = vertex_cell_adj_.find(vh.id().slot);
     if (it == vertex_cell_adj_.end()) return result;
     result.reserve(it->second.size());
@@ -403,7 +403,7 @@ std::vector<CellHandle> PolyhedraMesh::vertex_cells(VertexHandle vh) const {
 
 std::vector<HalfFaceHandle> PolyhedraMesh::vertex_halffaces(VertexHandle vh) const {
     std::vector<HalfFaceHandle> result;
-    if (!is_valid(vh)) return result;
+    if (!is_handle_valid(vh)) return result;
     VertexID vid = vh.id();
     auto it = vertex_cell_adj_.find(vid.slot);
     if (it == vertex_cell_adj_.end()) return result;
@@ -427,7 +427,7 @@ std::vector<HalfFaceHandle> PolyhedraMesh::vertex_halffaces(VertexHandle vh) con
 std::vector<std::pair<VertexHandle, VertexHandle>>
 PolyhedraMesh::cell_edges(CellHandle ch) const {
     std::vector<std::pair<VertexHandle, VertexHandle>> result;
-    if (!is_valid(ch)) return result;
+    if (!is_handle_valid(ch)) return result;
 
     const Cell& cell = cells_.get(ch.id());
     const CellTopologyTraits& topo = get_cell_topology(cell.type);

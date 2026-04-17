@@ -203,10 +203,10 @@ public:
 
     // ---- validity -------------------------------------------------------
 
-    bool is_valid(VertexHandle   v)  const noexcept;
-    bool is_valid(FaceHandle     f)  const noexcept;
-    bool is_valid(HalfFaceHandle hf) const noexcept;
-    bool is_valid(CellHandle     c)  const noexcept;
+    bool is_handle_valid(VertexHandle   v)  const noexcept;
+    bool is_handle_valid(FaceHandle     f)  const noexcept;
+    bool is_handle_valid(HalfFaceHandle hf) const noexcept;
+    bool is_handle_valid(CellHandle     c)  const noexcept;
 
     // ---- boundary queries -----------------------------------------------
 
@@ -306,7 +306,7 @@ private:
 
 // VertexHandle
 inline bool VertexHandle::is_valid() const noexcept {
-    return mesh_ && mesh_->is_valid(*this);
+    return mesh_ && mesh_->is_handle_valid(*this);
 }
 inline Vector3 VertexHandle::position() const {
     return mesh_->vertex_pool().get(id_).position;
@@ -320,7 +320,7 @@ inline bool VertexHandle::is_boundary() const {
 
 // FaceHandle
 inline bool FaceHandle::is_valid() const noexcept {
-    return mesh_ && mesh_->is_valid(*this);
+    return mesh_ && mesh_->is_handle_valid(*this);
 }
 inline bool FaceHandle::is_boundary() const {
     return mesh_->is_boundary(*this);
@@ -334,7 +334,7 @@ inline std::pair<HalfFaceHandle, HalfFaceHandle> FaceHandle::halffaces() const {
 
 // HalfFaceHandle
 inline bool HalfFaceHandle::is_valid() const noexcept {
-    return mesh_ && mesh_->is_valid(*this);
+    return mesh_ && mesh_->is_handle_valid(*this);
 }
 inline bool HalfFaceHandle::is_boundary() const {
     return mesh_->is_boundary(*this);
@@ -354,7 +354,7 @@ inline std::vector<VertexHandle> HalfFaceHandle::vertices() const {
 
 // CellHandle
 inline bool CellHandle::is_valid() const noexcept {
-    return mesh_ && mesh_->is_valid(*this);
+    return mesh_ && mesh_->is_handle_valid(*this);
 }
 inline CellType CellHandle::type() const {
     return mesh_->cell_pool().get(id_).type;
