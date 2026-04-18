@@ -12,7 +12,7 @@
 
 namespace SolidMesh {
 
-class PolyhedraMesh;
+class PolyhedralMesh;
 
 class VertexHandle;
 class FaceHandle;
@@ -27,7 +27,7 @@ class CellHandle;
 class VertexHandle {
 public:
     VertexHandle() = default;
-    VertexHandle(PolyhedraMesh* m, VertexID id) : mesh_(m), id_(id) {}
+    VertexHandle(PolyhedralMesh* m, VertexID id) : mesh_(m), id_(id) {}
 
     bool      is_valid()    const noexcept;
     VertexID  id()          const noexcept { return id_; }
@@ -42,14 +42,14 @@ public:
     explicit operator bool() const noexcept { return is_valid(); }
 
 private:
-    PolyhedraMesh* mesh_ = nullptr;
+    PolyhedralMesh* mesh_ = nullptr;
     VertexID       id_;
 };
 
 class FaceHandle {
 public:
     FaceHandle() = default;
-    FaceHandle(PolyhedraMesh* m, FaceID id) : mesh_(m), id_(id) {}
+    FaceHandle(PolyhedralMesh* m, FaceID id) : mesh_(m), id_(id) {}
 
     bool    is_valid()    const noexcept;
     FaceID  id()          const noexcept { return id_; }
@@ -65,14 +65,14 @@ public:
     explicit operator bool() const noexcept { return is_valid(); }
 
 private:
-    PolyhedraMesh* mesh_ = nullptr;
+    PolyhedralMesh* mesh_ = nullptr;
     FaceID         id_;
 };
 
 class HalfFaceHandle {
 public:
     HalfFaceHandle() = default;
-    HalfFaceHandle(PolyhedraMesh* m, HalfFaceID id) : mesh_(m), id_(id) {}
+    HalfFaceHandle(PolyhedralMesh* m, HalfFaceID id) : mesh_(m), id_(id) {}
 
     bool          is_valid()    const noexcept;
     HalfFaceID    id()          const noexcept { return id_; }
@@ -89,14 +89,14 @@ public:
     explicit operator bool() const noexcept { return is_valid(); }
 
 private:
-    PolyhedraMesh* mesh_ = nullptr;
+    PolyhedralMesh* mesh_ = nullptr;
     HalfFaceID     id_;
 };
 
 class CellHandle {
 public:
     CellHandle() = default;
-    CellHandle(PolyhedraMesh* m, CellID id) : mesh_(m), id_(id) {}
+    CellHandle(PolyhedralMesh* m, CellID id) : mesh_(m), id_(id) {}
 
     bool      is_valid()         const noexcept;
     CellID    id()               const noexcept { return id_; }
@@ -113,7 +113,7 @@ public:
     explicit operator bool() const noexcept { return is_valid(); }
 
 private:
-    PolyhedraMesh* mesh_ = nullptr;
+    PolyhedralMesh* mesh_ = nullptr;
     CellID         id_;
 };
 
@@ -149,11 +149,11 @@ struct ValidationReport {
 template<typename T, typename Handle, typename ID>
 class HandleRange {
 public:
-    HandleRange(PolyhedraMesh* mesh, const EntityPool<T, ID>* pool)
+    HandleRange(PolyhedralMesh* mesh, const EntityPool<T, ID>* pool)
         : mesh_(mesh), pool_(pool) {}
 
     struct iterator {
-        PolyhedraMesh*                              mesh;
+        PolyhedralMesh*                              mesh;
         typename EntityPool<T, ID>::IDIterator      it;
 
         Handle operator*() const { return Handle(mesh, *it); }
@@ -165,23 +165,23 @@ public:
     iterator end()   const { return {mesh_, pool_->ids().end()}; }
 
 private:
-    PolyhedraMesh*              mesh_;
+    PolyhedralMesh*              mesh_;
     const EntityPool<T, ID>*    pool_;
 };
 
 // =========================================================================
-// PolyhedraMesh
+// PolyhedralMesh
 // =========================================================================
 
-class PolyhedraMesh {
+class PolyhedralMesh {
 public:
-    PolyhedraMesh()  = default;
-    ~PolyhedraMesh() = default;
+    PolyhedralMesh()  = default;
+    ~PolyhedralMesh() = default;
 
-    PolyhedraMesh(const PolyhedraMesh&)            = delete;
-    PolyhedraMesh& operator=(const PolyhedraMesh&) = delete;
-    PolyhedraMesh(PolyhedraMesh&&)                 = default;
-    PolyhedraMesh& operator=(PolyhedraMesh&&)      = default;
+    PolyhedralMesh(const PolyhedralMesh&)            = delete;
+    PolyhedralMesh& operator=(const PolyhedralMesh&) = delete;
+    PolyhedralMesh(PolyhedralMesh&&)                 = default;
+    PolyhedralMesh& operator=(PolyhedralMesh&&)      = default;
 
     // ---- construction ---------------------------------------------------
 
@@ -234,10 +234,10 @@ public:
     HalfFaceRangeT halffaces() { return {this, &halffaces_}; }
     CellRangeT     cells()     { return {this, &cells_}; }
 
-    VertexRangeT   vertices()  const { return {const_cast<PolyhedraMesh*>(this), &vertices_}; }
-    FaceRangeT     faces()     const { return {const_cast<PolyhedraMesh*>(this), &faces_}; }
-    HalfFaceRangeT halffaces() const { return {const_cast<PolyhedraMesh*>(this), &halffaces_}; }
-    CellRangeT     cells()     const { return {const_cast<PolyhedraMesh*>(this), &cells_}; }
+    VertexRangeT   vertices()  const { return {const_cast<PolyhedralMesh*>(this), &vertices_}; }
+    FaceRangeT     faces()     const { return {const_cast<PolyhedralMesh*>(this), &faces_}; }
+    HalfFaceRangeT halffaces() const { return {const_cast<PolyhedralMesh*>(this), &halffaces_}; }
+    CellRangeT     cells()     const { return {const_cast<PolyhedralMesh*>(this), &cells_}; }
 
     // ---- index-based access (TBB-friendly) ------------------------------
     // Access by dense index [0, num_X()). Index is NOT stable across deletions.
@@ -268,6 +268,9 @@ public:
     // edge export — edges derived from cell topology, no EdgeID stored
     // Each edge appears once per cell (not deduplicated across cells).
     std::vector<std::pair<VertexHandle, VertexHandle>> cell_edges(CellHandle c) const;
+
+    std::vector<CellHandle> edge_cells(VertexHandle v0, VertexHandle v1) const;
+    std::vector<CellHandle> edge_cells_ccw(VertexHandle v0, VertexHandle v1) const;
 
     // ---- validation -----------------------------------------------------
 
@@ -301,7 +304,7 @@ private:
 };
 
 // =========================================================================
-// Handle wrapper method bodies (need full PolyhedraMesh definition)
+// Handle wrapper method bodies (need full PolyhedralMesh definition)
 // =========================================================================
 
 // VertexHandle
@@ -373,17 +376,17 @@ inline std::vector<CellHandle> CellHandle::adjacent_cells() const {
 }
 
 // ---- index-based access -------------------------------------------------
-inline VertexHandle PolyhedraMesh::vertex_at(size_t i) const {
-    return VertexHandle(const_cast<PolyhedraMesh*>(this), vertices_.id_at(i));
+inline VertexHandle PolyhedralMesh::vertex_at(size_t i) const {
+    return VertexHandle(const_cast<PolyhedralMesh*>(this), vertices_.id_at(i));
 }
-inline FaceHandle PolyhedraMesh::face_at(size_t i) const {
-    return FaceHandle(const_cast<PolyhedraMesh*>(this), faces_.id_at(i));
+inline FaceHandle PolyhedralMesh::face_at(size_t i) const {
+    return FaceHandle(const_cast<PolyhedralMesh*>(this), faces_.id_at(i));
 }
-inline HalfFaceHandle PolyhedraMesh::halfface_at(size_t i) const {
-    return HalfFaceHandle(const_cast<PolyhedraMesh*>(this), halffaces_.id_at(i));
+inline HalfFaceHandle PolyhedralMesh::halfface_at(size_t i) const {
+    return HalfFaceHandle(const_cast<PolyhedralMesh*>(this), halffaces_.id_at(i));
 }
-inline CellHandle PolyhedraMesh::cell_at(size_t i) const {
-    return CellHandle(const_cast<PolyhedraMesh*>(this), cells_.id_at(i));
+inline CellHandle PolyhedralMesh::cell_at(size_t i) const {
+    return CellHandle(const_cast<PolyhedralMesh*>(this), cells_.id_at(i));
 }
 
 } // namespace SolidMesh

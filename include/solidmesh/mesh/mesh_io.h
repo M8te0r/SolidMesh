@@ -1,6 +1,6 @@
 #pragma once
 
-#include "polyhedra_mesh.h"
+#include "polyhedral_mesh.h"
 #include <string>
 
 namespace SolidMesh {
@@ -13,12 +13,12 @@ namespace SolidMesh {
 //     Unsupported cell types (e.g. lines, triangles) are silently skipped.
 //
 // Usage:
-//   PolyhedraMesh mesh;
+//   PolyhedralMesh mesh;
 //   bool ok = MeshIO::read_vtk("path/to/file.vtk", mesh);
 class MeshIO {
 public:
-    static bool read_vtk(const std::string& path, PolyhedraMesh& mesh);
-    static bool write_vtk(const std::string& path, const PolyhedraMesh& mesh);
+    static bool read_vtk(const std::string& path, PolyhedralMesh& mesh);
+    static bool write_vtk(const std::string& path, const PolyhedralMesh& mesh);
 };
 
 } // namespace SolidMesh

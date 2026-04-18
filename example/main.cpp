@@ -1,12 +1,12 @@
 #include <iostream>
 #include <chrono>
-#include "solidmesh/mesh/polyhedra_mesh.h"
+#include "solidmesh/mesh/polyhedral_mesh.h"
 #include "solidmesh/mesh/mesh_io.h"
 
 using namespace SolidMesh;
 
 void SimpleExample(){
-    PolyhedraMesh mesh;
+    PolyhedralMesh mesh;
 
     // Build a simple mesh of two tetrahedra sharing one face
     //
@@ -97,7 +97,7 @@ void SimpleExample(){
 }
 
 void NewAPISmoke() {
-    PolyhedraMesh mesh;
+    PolyhedralMesh mesh;
     auto v0 = mesh.add_vertex({0,0,0});
     auto v1 = mesh.add_vertex({1,0,0});
     auto v2 = mesh.add_vertex({0,1,0});
@@ -146,7 +146,7 @@ int main() {
 
     // start time
     auto start = std::chrono::high_resolution_clock::now();
-    PolyhedraMesh mesh;
+    PolyhedralMesh mesh;
     
     if(!MeshIO::read_vtk(path,mesh)){
         printf("Read .vtk FAILED!\n");

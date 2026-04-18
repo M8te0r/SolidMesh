@@ -7,7 +7,7 @@
 
 namespace SolidMesh {
 
-bool MeshIO::read_vtk(const std::string& path, PolyhedraMesh& mesh) {
+bool MeshIO::read_vtk(const std::string& path, PolyhedralMesh& mesh) {
     std::ifstream in(path);
     if (!in) return false;
 
@@ -106,7 +106,7 @@ bool MeshIO::read_vtk(const std::string& path, PolyhedraMesh& mesh) {
     const size_t num_cells = cell_offsets.size() - 1;
     if (cell_types.size() != num_cells) return false;
 
-    PolyhedraMesh loaded;
+    PolyhedralMesh loaded;
     std::vector<VertexHandle> vtk_vertices;
     vtk_vertices.reserve(points.size());
     for (const Vector3& p : points) {
@@ -147,7 +147,7 @@ bool MeshIO::read_vtk(const std::string& path, PolyhedraMesh& mesh) {
     return true;
 }
 
-bool MeshIO::write_vtk(const std::string& path, const PolyhedraMesh& mesh) {
+bool MeshIO::write_vtk(const std::string& path, const PolyhedralMesh& mesh) {
     std::ofstream out(path);
     if (!out) return false;
 
