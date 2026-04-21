@@ -18,7 +18,6 @@ enum EntityFlags : uint32_t {
 struct Vertex {
     Vector3     position;
     HalfFaceID  one_halfface;   // seed for incident-halfface traversal
-    uint32_t    flags = 0;
 };
 
 // Internal entity — not directly exposed in the public API.
@@ -27,7 +26,6 @@ struct Vertex {
 struct Face {
     std::vector<VertexID> vertices;  // canonical ring (lexicographically minimal rotation)
     HalfFaceID            hf[2];     // hf[1] invalid => boundary face
-    uint32_t              flags = 0;
 
     bool is_boundary() const noexcept { return !hf[1].has_value(); }
 };
@@ -41,14 +39,12 @@ struct HalfFace {
     CellID   cell;
     uint8_t  local_face_index = 0;
     uint8_t  orientation      = 0;
-    uint32_t flags            = 0;
 };
 
 struct Cell {
     CellType                type;
     std::vector<VertexID>   vertices;   // matches CellTopologyTraits ordering
     std::vector<HalfFaceID> halffaces;  // halffaces[i] corresponds to local face i
-    uint32_t                flags = 0;
 };
 
 } // namespace SolidMesh

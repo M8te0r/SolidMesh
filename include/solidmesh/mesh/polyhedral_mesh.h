@@ -272,6 +272,13 @@ public:
     std::vector<CellHandle> edge_cells(VertexHandle v0, VertexHandle v1) const;
     std::vector<CellHandle> edge_cells_ccw(VertexHandle v0, VertexHandle v1) const;
 
+    // ---- copy / duplicate -----------------------------------------------
+
+    // Returns a deep copy of this mesh. All topology is rebuilt via add_vertex /
+    // add_cell so the new mesh is fully self-consistent. Vertex and cell flags
+    // are preserved; face/halfface flags are not (they are derived from topology).
+    PolyhedralMesh duplicate() const;
+
     // ---- validation -----------------------------------------------------
 
     ValidationReport validate() const;

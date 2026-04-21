@@ -552,6 +552,39 @@ std::vector<CellHandle> PolyhedralMesh::edge_cells_ccw(VertexHandle v0, VertexHa
 
 
 // =========================================================================
+// duplicate
+// =========================================================================
+
+PolyhedralMesh PolyhedralMesh::duplicate() const {
+    PolyhedralMesh out;
+
+    // Pass 1: copy vertices, build old-slot -> new VertexHandle map
+    std::unordered_map<uint32_t, VertexHandle> slot_to_new;
+    slot_to_new.reserve(vertices_.size());
+    for (size_t i = 0; i < vertices_.size(); ++i) {
+        VertexID old_id = vertices_.id_at(i);
+        const Vertex& v = vertices_.get(old_id);
+        VertexHandle nh = out.add_vertex(v.position);
+        slot_to_new[old_id.slot] = nh;
+    }
+
+    // Pass 2: copy cells
+    for (size_t i = 0; i < cells_.size(); ++i) {
+        CellID old_cid = cells_.id_at(i);
+        const Cell& c = cells_.get(old_cid);
+
+        std::vector<VertexHandle> new_verts;
+        new_verts.reserve(c.vertices.size());
+        for (VertexID vid : c.vertices)
+            new_verts.push_back(slot_to_new.at(vid.slot));
+
+        CellHandle nch = out.add_cell(c.type, new_verts);
+    }
+
+    return out;
+}
+
+// =========================================================================
 // Validation
 // =========================================================================
 
