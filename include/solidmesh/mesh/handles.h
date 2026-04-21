@@ -4,7 +4,7 @@
 
 namespace SolidMesh {
 
-constexpr uint32_t INVALID_SLOT = std::numeric_limits<uint32_t>::max();
+constexpr uint32_t INVALID_SLOT_INDEX = std::numeric_limits<uint32_t>::max();
 
 // Generation-based stable handles. slot+generation together uniquely identify
 // a live entity; a stale handle (pointing to a recycled slot) is detectable
@@ -12,9 +12,9 @@ constexpr uint32_t INVALID_SLOT = std::numeric_limits<uint32_t>::max();
 
 #define SM_DEFINE_ID(Name)                                                                      \
     struct Name {                                                                               \
-        uint32_t slot       = INVALID_SLOT;                                                     \
+        uint32_t slot       = INVALID_SLOT_INDEX;                                               \
         uint32_t generation = 0;                                                                \
-        bool is_valid() const noexcept { return slot != INVALID_SLOT; }                         \
+        bool has_value() const noexcept { return slot != INVALID_SLOT_INDEX; }                  \
         uint64_t value() const noexcept{return (static_cast<uint64_t>(generation)<<32)|slot;}   \
         static Name create_from_value(uint64_t v) noexcept {                                    \
             return Name{                                                                        \

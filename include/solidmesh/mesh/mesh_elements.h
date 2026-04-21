@@ -29,7 +29,7 @@ struct Face {
     HalfFaceID            hf[2];     // hf[1] invalid => boundary face
     uint32_t              flags = 0;
 
-    bool is_boundary() const noexcept { return !hf[1].is_valid(); }
+    bool is_boundary() const noexcept { return !hf[1].has_value(); }
 };
 
 // A directed view of a Face from one incident Cell.

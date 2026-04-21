@@ -77,7 +77,7 @@ CellHandle PolyhedralMesh::add_cell(CellType type,
         auto it = face_map_.find(key);
         if (it != face_map_.end()) {
             const Face& f = faces_.get(it->second);
-            if (f.hf[0].is_valid() && f.hf[1].is_valid())
+            if (f.hf[0].has_value() && f.hf[1].has_value())
                 return CellHandle(); // would create non-manifold face
         }
     }
@@ -140,7 +140,7 @@ CellHandle PolyhedralMesh::add_cell(CellType type,
         vertex_cell_adj_[vid.slot].push_back(cid);
 
         Vertex& v = vertices_.get(vid);
-        if (v.one_halfface.is_valid()) continue;
+        if (v.one_halfface.has_value()) continue;
         for (int fi = 0; fi < topo.num_faces; ++fi) {
             const FaceLocalDesc& fd = topo.faces[fi];
             for (int k = 0; k < fd.size; ++k) {
@@ -182,7 +182,7 @@ bool PolyhedralMesh::delete_cell(CellHandle ch) {
         Face&    face = faces_.get(fid);
 
         if (face.hf[0] == hfid) {
-            if (face.hf[1].is_valid()) {
+            if (face.hf[1].has_value()) {
                 face.hf[0] = face.hf[1];
                 face.hf[1] = HalfFaceID{};
             } else {
@@ -224,10 +224,10 @@ bool PolyhedralMesh::delete_isolated_vertex(VertexHandle vh) {
 // =========================================================================
 
 void PolyhedralMesh::repair_vertex_seed(VertexID vid) {
-    if (!vertices_.alive(vid)) return;
+    if (!vertices_.exist(vid)) return;
     Vertex& v = vertices_.get(vid);
 
-    if (v.one_halfface.is_valid() && halffaces_.alive(v.one_halfface))
+    if (v.one_halfface.has_value() && halffaces_.exist(v.one_halfface))
         return;
 
     v.one_halfface = HalfFaceID{};
@@ -236,7 +236,7 @@ void PolyhedralMesh::repair_vertex_seed(VertexID vid) {
     if (it == vertex_cell_adj_.end()) return;
 
     for (CellID cid : it->second) {
-        if (!cells_.alive(cid)) continue;
+        if (!cells_.exist(cid)) continue;
         const Cell& cell = cells_.get(cid);
         const CellTopologyTraits& topo = get_cell_topology(cell.type);
         for (int vi = 0; vi < static_cast<int>(cell.vertices.size()); ++vi) {
@@ -259,16 +259,16 @@ void PolyhedralMesh::repair_vertex_seed(VertexID vid) {
 // =========================================================================
 
 bool PolyhedralMesh::is_handle_valid(VertexHandle v)    const noexcept {
-    return v.id().is_valid() && vertices_.alive(v.id());
+    return v.id().has_value() && vertices_.exist(v.id());
 }
 bool PolyhedralMesh::is_handle_valid(FaceHandle f)      const noexcept {
-    return f.id().is_valid() && faces_.alive(f.id());
+    return f.id().has_value() && faces_.exist(f.id());
 }
 bool PolyhedralMesh::is_handle_valid(HalfFaceHandle hf) const noexcept {
-    return hf.id().is_valid() && halffaces_.alive(hf.id());
+    return hf.id().has_value() && halffaces_.exist(hf.id());
 }
 bool PolyhedralMesh::is_handle_valid(CellHandle c)      const noexcept {
-    return c.id().is_valid() && cells_.alive(c.id());
+    return c.id().has_value() && cells_.exist(c.id());
 }
 
 // =========================================================================
@@ -338,7 +338,7 @@ std::vector<CellHandle> PolyhedralMesh::cell_cells(CellHandle ch) const {
     for (HalfFaceID hfid : cells_.get(ch.id()).halffaces) {
         const Face& face = faces_.get(halffaces_.get(hfid).face);
         HalfFaceID opp = face.hf[0] == hfid ? face.hf[1] : face.hf[0];
-        if (opp.is_valid())
+        if (opp.has_value())
             result.emplace_back(const_cast<PolyhedralMesh*>(this), halffaces_.get(opp).cell);
     }
     return result;
@@ -357,7 +357,7 @@ HalfFaceHandle PolyhedralMesh::halfface_opposite(HalfFaceHandle hf) const {
     if (!is_handle_valid(hf)) return HalfFaceHandle();
     const Face& face = faces_.get(halffaces_.get(hf.id()).face);
     HalfFaceID opp = face.hf[0] == hf.id() ? face.hf[1] : face.hf[0];
-    if (!opp.is_valid()) return HalfFaceHandle();
+    if (!opp.has_value()) return HalfFaceHandle();
     return HalfFaceHandle(const_cast<PolyhedralMesh*>(this), opp);
 }
 
@@ -385,8 +385,8 @@ PolyhedralMesh::face_halffaces(FaceHandle fh) const {
     const Face& f = faces_.get(fh.id());
     auto* m = const_cast<PolyhedralMesh*>(this);
     return {
-        f.hf[0].is_valid() ? HalfFaceHandle(m, f.hf[0]) : HalfFaceHandle(),
-        f.hf[1].is_valid() ? HalfFaceHandle(m, f.hf[1]) : HalfFaceHandle()
+        f.hf[0].has_value() ? HalfFaceHandle(m, f.hf[0]) : HalfFaceHandle(),
+        f.hf[1].has_value() ? HalfFaceHandle(m, f.hf[1]) : HalfFaceHandle()
     };
 }
 
@@ -565,7 +565,7 @@ ValidationReport PolyhedralMesh::validate() const {
     for (size_t di = 0; di < vertices_.size(); ++di) {
         VertexID vid = vertices_.id_at(di);
         const Vertex& v = vertices_.get(vid);
-        if (v.one_halfface.is_valid() && !halffaces_.alive(v.one_halfface)) {
+        if (v.one_halfface.has_value() && !halffaces_.exist(v.one_halfface)) {
             std::ostringstream ss;
             ss << "Vertex slot=" << vid.slot << " has stale one_halfface seed";
             issue(ValidationIssue::Type::InvalidVertexSeed, ss.str());
@@ -575,17 +575,17 @@ ValidationReport PolyhedralMesh::validate() const {
     for (size_t di = 0; di < faces_.size(); ++di) {
         FaceID fid = faces_.id_at(di);
         const Face& f = faces_.get(fid);
-        if (!f.hf[0].is_valid() && !f.hf[1].is_valid()) {
+        if (!f.hf[0].has_value() && !f.hf[1].has_value()) {
             std::ostringstream ss;
             ss << "Face slot=" << fid.slot << " has zero halffaces";
             issue(ValidationIssue::Type::FaceZeroHalfFaces, ss.str());
         }
-        if (f.hf[0].is_valid() && !halffaces_.alive(f.hf[0])) {
+        if (f.hf[0].has_value() && !halffaces_.exist(f.hf[0])) {
             std::ostringstream ss;
             ss << "Face slot=" << fid.slot << " hf[0] is stale";
             issue(ValidationIssue::Type::HalfFaceBackRefBroken, ss.str());
         }
-        if (f.hf[1].is_valid() && !halffaces_.alive(f.hf[1])) {
+        if (f.hf[1].has_value() && !halffaces_.exist(f.hf[1])) {
             std::ostringstream ss;
             ss << "Face slot=" << fid.slot << " hf[1] is stale";
             issue(ValidationIssue::Type::HalfFaceBackRefBroken, ss.str());
@@ -596,13 +596,13 @@ ValidationReport PolyhedralMesh::validate() const {
         HalfFaceID hfid = halffaces_.id_at(di);
         const HalfFace& hf = halffaces_.get(hfid);
 
-        if (!faces_.alive(hf.face)) {
+        if (!faces_.exist(hf.face)) {
             std::ostringstream ss;
             ss << "HalfFace slot=" << hfid.slot << " has stale face ref";
             issue(ValidationIssue::Type::HalfFaceBackRefBroken, ss.str());
             continue;
         }
-        if (!cells_.alive(hf.cell)) {
+        if (!cells_.exist(hf.cell)) {
             std::ostringstream ss;
             ss << "HalfFace slot=" << hfid.slot << " has stale cell ref";
             issue(ValidationIssue::Type::HalfFaceBackRefBroken, ss.str());
@@ -640,7 +640,7 @@ ValidationReport PolyhedralMesh::validate() const {
         }
         for (int fi = 0; fi < static_cast<int>(cell.halffaces.size()); ++fi) {
             HalfFaceID hfid = cell.halffaces[fi];
-            if (!halffaces_.alive(hfid)) {
+            if (!halffaces_.exist(hfid)) {
                 std::ostringstream ss;
                 ss << "Cell slot=" << cid.slot << " halfface[" << fi << "] is stale";
                 issue(ValidationIssue::Type::CellHalfFaceBackRefBroken, ss.str());
@@ -656,12 +656,12 @@ ValidationReport PolyhedralMesh::validate() const {
     }
 
     for (const auto& [key, fid] : face_map_)
-        if (!faces_.alive(fid))
+        if (!faces_.exist(fid))
             issue(ValidationIssue::Type::FaceMapInconsistency, "face_map_ contains stale FaceID");
 
     for (const auto& [slot, cids] : vertex_cell_adj_) {
         for (CellID cid : cids) {
-            if (!cells_.alive(cid)) {
+            if (!cells_.exist(cid)) {
                 std::ostringstream ss;
                 ss << "vertex_cell_adj_ slot=" << slot << " contains stale CellID";
                 issue(ValidationIssue::Type::VertexAdjInconsistency, ss.str());

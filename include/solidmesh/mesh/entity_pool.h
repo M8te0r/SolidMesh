@@ -23,62 +23,63 @@ public:
 
     EntityID insert(EntityType value) {
         uint32_t slot;
-        if (!free_list_.empty()) {
+        if (!free_list_.empty()) {  // 如果有可用的slot，就复用它
             slot = free_list_.back();
             free_list_.pop_back();
-            sparse_[slot].dense_index = static_cast<uint32_t>(dense_.size());
-            sparse_[slot].alive       = true;
+            sparse_[slot].dense_index = static_cast<uint32_t>(dense_.size());   // 新元素在dense_的末尾插入
+            sparse_[slot].activate       = true;    // 标记这个slot被占用了
             // generation was already bumped on erase
         } else {
+            // 将数据插入dense_的末尾
             slot = static_cast<uint32_t>(sparse_.size());
-            Slot s;
+            EntitySlot s;
             s.dense_index = static_cast<uint32_t>(dense_.size());
             s.generation  = 0;
-            s.alive       = true;
+            s.activate       = true;
             sparse_.push_back(s);
         }
         dense_.push_back(std::move(value));
-        dense_to_sparse_.push_back(slot);
+        dense_to_sparse_.push_back(slot);       // 记录dense_到sparse_的关系
         return EntityID{slot, sparse_[slot].generation};
     }
 
     // Erase by ID. No-op if id is stale or invalid.
     void erase(EntityID id) {
-        if (!alive(id)) return;
+        if (!exist(id)) return;
         uint32_t di = sparse_[id.slot].dense_index;
 
-        // Swap with last dense element
+        // 为了不让 dense_ 数组中间出现空洞，当删除一个元素时，它将 待删除元素 与 dense_最后一个元素 进行交换。
         if (di != static_cast<uint32_t>(dense_.size()) - 1) {
             uint32_t last_slot = dense_to_sparse_.back();
             dense_[di]              = std::move(dense_.back());
-            dense_to_sparse_[di]    = last_slot;
-            sparse_[last_slot].dense_index = di;
+            dense_to_sparse_[di]    = last_slot;    // 更新dense_到sparse_的关系
+            sparse_[last_slot].dense_index = di;    // 更新dense_中被交换元素在sparse_中的索引
         }
         dense_.pop_back();
         dense_to_sparse_.pop_back();
 
         // Invalidate slot
-        sparse_[id.slot].alive = false;
-        ++sparse_[id.slot].generation;
+        sparse_[id.slot].activate = false;     // 当前槽位已经失效了
+        ++sparse_[id.slot].generation;         
         free_list_.push_back(id.slot);
     }
 
     // ---- query ----------------------------------------------------------
 
-    bool alive(EntityID id) const noexcept {
-        if (!id.is_valid()) return false;
+    bool exist(EntityID id) const noexcept {
+        if (!id.has_value()) return false;
         if (id.slot >= sparse_.size()) return false;
-        const Slot& s = sparse_[id.slot];
-        return s.alive && s.generation == id.generation;
+        const EntitySlot& s = sparse_[id.slot];
+        return s.activate && s.generation == id.generation;
     }
 
     EntityType& get(EntityID id) {
-        assert(alive(id));
+        assert(exist(id));
         return dense_[sparse_[id.slot].dense_index];
     }
 
     const EntityType& get(EntityID id) const {
-        assert(alive(id));
+        assert(exist(id));
         return dense_[sparse_[id.slot].dense_index];
     }
 
@@ -86,7 +87,7 @@ public:
     bool   empty() const noexcept { return dense_.empty(); }
 
     // ---- iteration ------------------------------------------------------
-    // Iterates over IDs of all alive elements in dense order.
+    // Iterates over IDs of all exist elements in dense order.
 
     struct IDIterator {
         const EntityPool* pool;
@@ -120,16 +121,16 @@ public:
     }
 
 private:
-    struct Slot {
+    struct EntitySlot {
         uint32_t dense_index;
-        uint32_t generation;
-        bool     alive;
+        uint32_t generation;    // generation计数器，slot被用过一次后，generation会增加
+        bool     activate;      // 这个槽位当前是否被占用
     };
 
-    std::vector<EntityType>        dense_;
-    std::vector<uint32_t> dense_to_sparse_;
-    std::vector<Slot>     sparse_;
-    std::vector<uint32_t> free_list_;
+    std::vector<EntityType>       dense_;               // 连续存储实际的元素
+    std::vector<uint32_t>         dense_to_sparse_;     // 存储了dense_中每个元素在sparse_中的索引
+    std::vector<EntitySlot>       sparse_;              // 存储了数据在dense_中的索引
+    std::vector<uint32_t>         free_list_;           // 存储sparse_中的空闲槽位索引
 };
 
 } // namespace SolidMesh
