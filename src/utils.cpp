@@ -35,7 +35,7 @@ namespace SolidMesh
     bool intersect_line_line(const Vector3 &p, const Vector3 &r,
                              const Vector3 &q, const Vector3 &s,
                              double *a_t, double *a_u,
-                             double eps = 1e-8)
+                             double eps)
     {
         // https://github.com/libigl/libigl/blob/main/include/igl/segment_segment_intersect.cpp
 
@@ -86,7 +86,7 @@ namespace SolidMesh
                                   const Vector3 &v0,
                                   const Vector3 &v1,
                                   const Vector3 &v2,
-                                  double tolerance = 1e-8)
+                                  double tolerance)
     {
         // Moller-Trumbore intersection algorithm
         auto e1 = v1 - v0;
