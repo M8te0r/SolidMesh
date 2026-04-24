@@ -1,4 +1,4 @@
-#include "solidmesh/math/utils.h"
+#include "solidmesh/math/geometry_utils.h"
 namespace SolidMesh
 {
 
