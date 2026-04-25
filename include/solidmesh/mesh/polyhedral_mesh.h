@@ -264,6 +264,7 @@ public:
     // vertex star queries — O(degree), backed by vertex_cell_adj_
     std::vector<CellHandle>     vertex_cells(VertexHandle v)     const;
     std::vector<HalfFaceHandle> vertex_halffaces(VertexHandle v) const;
+    std::vector<VertexHandle>   vertex_vertices(VertexHandle v) const;
 
     // edge export — edges derived from cell topology, no EdgeID stored
     // Each edge appears once per cell (not deduplicated across cells).
@@ -283,19 +284,12 @@ public:
 
     ValidationReport validate() const;
 
-    // ---- internal pool access (used by handle wrappers) -----------------
-
-    EntityPool<Vertex,   VertexID>&   vertex_pool()   { return vertices_; }
-    EntityPool<Face,     FaceID>&     face_pool()     { return faces_; }
-    EntityPool<HalfFace, HalfFaceID>& halfface_pool() { return halffaces_; }
-    EntityPool<Cell,     CellID>&     cell_pool()     { return cells_; }
-
-    const EntityPool<Vertex,   VertexID>&   vertex_pool()   const { return vertices_; }
-    const EntityPool<Face,     FaceID>&     face_pool()     const { return faces_; }
-    const EntityPool<HalfFace, HalfFaceID>& halfface_pool() const { return halffaces_; }
-    const EntityPool<Cell,     CellID>&     cell_pool()     const { return cells_; }
-
 private:
+    friend class VertexHandle;
+    friend class FaceHandle;
+    friend class HalfFaceHandle;
+    friend class CellHandle;
+
     EntityPool<Vertex,   VertexID>    vertices_;
     EntityPool<Face,     FaceID>      faces_;
     EntityPool<HalfFace, HalfFaceID>  halffaces_;
@@ -319,10 +313,10 @@ inline bool VertexHandle::is_valid() const noexcept {
     return mesh_ && mesh_->is_handle_valid(*this);
 }
 inline Vector3 VertexHandle::position() const {
-    return mesh_->vertex_pool().get(id_).position;
+    return mesh_->vertices_.get(id_).position;
 }
 inline void VertexHandle::set_position(const Vector3& p) {
-    mesh_->vertex_pool().get(id_).position = p;
+    mesh_->vertices_.get(id_).position = p;
 }
 inline bool VertexHandle::is_boundary() const {
     return mesh_->is_boundary(*this);
@@ -367,7 +361,7 @@ inline bool CellHandle::is_valid() const noexcept {
     return mesh_ && mesh_->is_handle_valid(*this);
 }
 inline CellType CellHandle::type() const {
-    return mesh_->cell_pool().get(id_).type;
+    return mesh_->cells_.get(id_).type;
 }
 inline bool CellHandle::is_boundary() const {
     return mesh_->is_boundary(*this);

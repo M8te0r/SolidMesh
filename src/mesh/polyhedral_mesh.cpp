@@ -1,6 +1,7 @@
 #include "solidmesh/mesh/polyhedral_mesh.h"
 #include <sstream>
 #include <cassert>
+#include <unordered_set>
 
 namespace SolidMesh {
 
@@ -417,6 +418,46 @@ std::vector<HalfFaceHandle> PolyhedralMesh::vertex_halffaces(VertexHandle vh) co
                 if (cell.vertices[fd.vids[k]] == vid) {
                     result.emplace_back(const_cast<PolyhedralMesh*>(this), cell.halffaces[fi]);
                     break;
+                }
+            }
+        }
+    }
+    return result;
+}
+
+std::vector<VertexHandle> PolyhedralMesh::vertex_vertices(VertexHandle vh) const {
+    std::vector<VertexHandle> result;
+    if (!is_handle_valid(vh)) return result;
+
+    const VertexID vid = vh.id();
+    auto it = vertex_cell_adj_.find(vid.slot);
+    if (it == vertex_cell_adj_.end()) return result;
+
+    result.reserve(it->second.size() * 3);
+    std::unordered_set<uint64_t> seen;
+    seen.reserve(it->second.size() * 4);
+
+    auto* m = const_cast<PolyhedralMesh*>(this);
+    auto add_neighbor = [&](VertexID other) {
+        if (other == vid) return;
+        if (seen.insert(other.value()).second)
+            result.emplace_back(m, other);
+    };
+
+    for (CellID cid : it->second) {
+        if (!cells_.exist(cid)) continue;
+        const Cell& cell = cells_.get(cid);
+        const CellTopologyTraits& topo = get_cell_topology(cell.type);
+
+        for (int fi = 0; fi < topo.num_faces; ++fi) {
+            const FaceLocalDesc& fd = topo.faces[fi];
+            for (int k = 0; k < fd.size; ++k) {
+                const VertexID va = cell.vertices[fd.vids[k]];
+                const VertexID vb = cell.vertices[fd.vids[(k + 1) % fd.size]];
+                if (va == vid) {
+                    add_neighbor(vb);
+                } else if (vb == vid) {
+                    add_neighbor(va);
                 }
             }
         }
