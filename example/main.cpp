@@ -125,7 +125,7 @@ void NewAPISmoke() {
     std::cout << "cell c0 edges: " << edges.size() << "\n";
 
     // index-based access
-    std::cout << "cell_at(0) valid: " << mesh.cell_at(0).is_valid() << "\n";
+    std::cout << "cell_at(0) valid: " << mesh.is_handle_valid(mesh.cell_at(0)) << "\n";
     std::cout << "face_at(0) boundary: " << mesh.face_at(0).is_boundary() << "\n";
 
     // is_boundary(vertex) via vertex_cell_adj_

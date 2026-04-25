@@ -29,8 +29,8 @@ public:
     VertexHandle() = default;
     VertexHandle(PolyhedralMesh* m, VertexID id) : mesh_(m), id_(id) {}
 
-    bool      is_valid()    const noexcept;
     VertexID  id()          const noexcept { return id_; }
+    const PolyhedralMesh* mesh() const noexcept { return mesh_; }
 
     Vector3   position()    const;
     void      set_position(const Vector3& p);
@@ -39,7 +39,6 @@ public:
 
     bool operator==(const VertexHandle& o) const noexcept { return id_ == o.id_; }
     bool operator!=(const VertexHandle& o) const noexcept { return id_ != o.id_; }
-    explicit operator bool() const noexcept { return is_valid(); }
 
 private:
     PolyhedralMesh* mesh_ = nullptr;
@@ -51,8 +50,8 @@ public:
     FaceHandle() = default;
     FaceHandle(PolyhedralMesh* m, FaceID id) : mesh_(m), id_(id) {}
 
-    bool    is_valid()    const noexcept;
     FaceID  id()          const noexcept { return id_; }
+    const PolyhedralMesh* mesh() const noexcept { return mesh_; }
 
     bool    is_boundary() const;
 
@@ -62,7 +61,6 @@ public:
 
     bool operator==(const FaceHandle& o) const noexcept { return id_ == o.id_; }
     bool operator!=(const FaceHandle& o) const noexcept { return id_ != o.id_; }
-    explicit operator bool() const noexcept { return is_valid(); }
 
 private:
     PolyhedralMesh* mesh_ = nullptr;
@@ -74,8 +72,8 @@ public:
     HalfFaceHandle() = default;
     HalfFaceHandle(PolyhedralMesh* m, HalfFaceID id) : mesh_(m), id_(id) {}
 
-    bool          is_valid()    const noexcept;
     HalfFaceID    id()          const noexcept { return id_; }
+    const PolyhedralMesh* mesh() const noexcept { return mesh_; }
 
     bool          is_boundary() const;
     CellHandle    cell()        const;
@@ -86,7 +84,6 @@ public:
 
     bool operator==(const HalfFaceHandle& o) const noexcept { return id_ == o.id_; }
     bool operator!=(const HalfFaceHandle& o) const noexcept { return id_ != o.id_; }
-    explicit operator bool() const noexcept { return is_valid(); }
 
 private:
     PolyhedralMesh* mesh_ = nullptr;
@@ -98,8 +95,8 @@ public:
     CellHandle() = default;
     CellHandle(PolyhedralMesh* m, CellID id) : mesh_(m), id_(id) {}
 
-    bool      is_valid()         const noexcept;
     CellID    id()               const noexcept { return id_; }
+    const PolyhedralMesh* mesh() const noexcept { return mesh_; }
     CellType  type()             const;
 
     bool      is_boundary()      const;
@@ -110,7 +107,6 @@ public:
 
     bool operator==(const CellHandle& o) const noexcept { return id_ == o.id_; }
     bool operator!=(const CellHandle& o) const noexcept { return id_ != o.id_; }
-    explicit operator bool() const noexcept { return is_valid(); }
 
 private:
     PolyhedralMesh* mesh_ = nullptr;
@@ -308,10 +304,6 @@ private:
 // Handle wrapper method bodies (need full PolyhedralMesh definition)
 // =========================================================================
 
-// VertexHandle
-inline bool VertexHandle::is_valid() const noexcept {
-    return mesh_ && mesh_->is_handle_valid(*this);
-}
 inline Vector3 VertexHandle::position() const {
     return mesh_->vertices_.get(id_).position;
 }
@@ -322,10 +314,6 @@ inline bool VertexHandle::is_boundary() const {
     return mesh_->is_boundary(*this);
 }
 
-// FaceHandle
-inline bool FaceHandle::is_valid() const noexcept {
-    return mesh_ && mesh_->is_handle_valid(*this);
-}
 inline bool FaceHandle::is_boundary() const {
     return mesh_->is_boundary(*this);
 }
@@ -336,10 +324,6 @@ inline std::pair<HalfFaceHandle, HalfFaceHandle> FaceHandle::halffaces() const {
     return mesh_->face_halffaces(*this);
 }
 
-// HalfFaceHandle
-inline bool HalfFaceHandle::is_valid() const noexcept {
-    return mesh_ && mesh_->is_handle_valid(*this);
-}
 inline bool HalfFaceHandle::is_boundary() const {
     return mesh_->is_boundary(*this);
 }
@@ -356,10 +340,6 @@ inline std::vector<VertexHandle> HalfFaceHandle::vertices() const {
     return mesh_->halfface_vertices(*this);
 }
 
-// CellHandle
-inline bool CellHandle::is_valid() const noexcept {
-    return mesh_ && mesh_->is_handle_valid(*this);
-}
 inline CellType CellHandle::type() const {
     return mesh_->cells_.get(id_).type;
 }
@@ -374,20 +354,6 @@ inline std::vector<HalfFaceHandle> CellHandle::halffaces() const {
 }
 inline std::vector<CellHandle> CellHandle::adjacent_cells() const {
     return mesh_->cell_cells(*this);
-}
-
-// ---- index-based access -------------------------------------------------
-inline VertexHandle PolyhedralMesh::vertex_at(size_t i) const {
-    return VertexHandle(const_cast<PolyhedralMesh*>(this), vertices_.id_at(i));
-}
-inline FaceHandle PolyhedralMesh::face_at(size_t i) const {
-    return FaceHandle(const_cast<PolyhedralMesh*>(this), faces_.id_at(i));
-}
-inline HalfFaceHandle PolyhedralMesh::halfface_at(size_t i) const {
-    return HalfFaceHandle(const_cast<PolyhedralMesh*>(this), halffaces_.id_at(i));
-}
-inline CellHandle PolyhedralMesh::cell_at(size_t i) const {
-    return CellHandle(const_cast<PolyhedralMesh*>(this), cells_.id_at(i));
 }
 
 } // namespace SolidMesh

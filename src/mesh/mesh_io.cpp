@@ -89,7 +89,8 @@ bool build_mesh_from_vtk_data(const std::vector<Vector3>& points,
             cell_verts.push_back(vtk_vertices[static_cast<size_t>(vtk_vid)]);
         }
 
-        if (!loaded.add_cell(ctype, cell_verts).is_valid()) return false;
+        CellHandle cell = loaded.add_cell(ctype, cell_verts);
+        if (!loaded.is_handle_valid(cell)) return false;
     }
 
     mesh = std::move(loaded);

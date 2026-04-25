@@ -260,16 +260,16 @@ void PolyhedralMesh::repair_vertex_seed(VertexID vid) {
 // =========================================================================
 
 bool PolyhedralMesh::is_handle_valid(VertexHandle v)    const noexcept {
-    return v.id().has_value() && vertices_.exist(v.id());
+    return v.mesh() == this && v.id().has_value() && vertices_.exist(v.id());
 }
 bool PolyhedralMesh::is_handle_valid(FaceHandle f)      const noexcept {
-    return f.id().has_value() && faces_.exist(f.id());
+    return f.mesh() == this && f.id().has_value() && faces_.exist(f.id());
 }
 bool PolyhedralMesh::is_handle_valid(HalfFaceHandle hf) const noexcept {
-    return hf.id().has_value() && halffaces_.exist(hf.id());
+    return hf.mesh() == this && hf.id().has_value() && halffaces_.exist(hf.id());
 }
 bool PolyhedralMesh::is_handle_valid(CellHandle c)      const noexcept {
-    return c.id().has_value() && cells_.exist(c.id());
+    return c.mesh() == this && c.id().has_value() && cells_.exist(c.id());
 }
 
 // =========================================================================
@@ -311,6 +311,23 @@ bool PolyhedralMesh::is_boundary(VertexHandle vh) const {
         }
     }
     return false;
+}
+
+VertexHandle PolyhedralMesh::vertex_at(size_t i) const
+{
+    return VertexHandle(const_cast<PolyhedralMesh *>(this), vertices_.id_at(i));
+}
+FaceHandle PolyhedralMesh::face_at(size_t i) const
+{
+    return FaceHandle(const_cast<PolyhedralMesh *>(this), faces_.id_at(i));
+}
+HalfFaceHandle PolyhedralMesh::halfface_at(size_t i) const
+{
+    return HalfFaceHandle(const_cast<PolyhedralMesh *>(this), halffaces_.id_at(i));
+}
+CellHandle PolyhedralMesh::cell_at(size_t i) const
+{
+    return CellHandle(const_cast<PolyhedralMesh *>(this), cells_.id_at(i));
 }
 
 // =========================================================================
@@ -548,7 +565,7 @@ std::vector<CellHandle> PolyhedralMesh::edge_cells_ccw(VertexHandle v0, VertexHa
         auto shared_hfs = contains_both(incident[i], v0, v1);
         for (auto& hf : shared_hfs) {
             auto opp = hf.opposite();
-            if (!opp.is_valid()) continue;
+            if (!is_handle_valid(opp)) continue;
             auto nb_cell = opp.cell();
             for (int j = 0; j < N; ++j) {
                 if (j != i && incident[j] == nb_cell) {
