@@ -17,8 +17,8 @@ namespace SolidMesh {
 //   bool ok = MeshIO::read_vtk("path/to/file.vtk", mesh);
 class MeshIO {
 public:
-    static bool read_vtk(const std::string& path, PolyhedralMesh& mesh);
-    static bool write_vtk(const std::string& path, const PolyhedralMesh& mesh);
+    static bool read_vtk_fast(const std::string& path, PolyhedralMesh& mesh);
+    static bool write_vtk_fast(const std::string& path, const PolyhedralMesh& mesh);
 };
 
 } // namespace SolidMesh
