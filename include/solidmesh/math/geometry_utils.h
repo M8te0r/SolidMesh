@@ -40,7 +40,7 @@ namespace SolidMesh
      * @param v1 triangle vertex 1, counter-clockwise order is assumed
      * @param v2 triangle vertex 2, counter-clockwise order is assumed
      * @param tolerance 
-     * @return double 
+     * @return double distance along ray or -1 if behind ray
      */
     double intersect_ray_triangle(const Vector3 &ray_origin,
                                      const Vector3 &ray_dir,
