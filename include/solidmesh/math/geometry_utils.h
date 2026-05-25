@@ -1,5 +1,5 @@
 #pragma once
-#include "solidmesh/math/vector3.h"
+#include <solidmesh/math/vector3.h>
 
 namespace SolidMesh
 {

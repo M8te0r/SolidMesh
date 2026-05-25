@@ -1,170 +1,89 @@
 #include <iostream>
 #include <chrono>
-#include "solidmesh/mesh/polyhedral_mesh.h"
 #include "solidmesh/mesh/mesh_io.h"
+#include "solidmesh/mesh/mesh.h"
 
-using namespace SolidMesh;
-
-void SimpleExample(){
-    PolyhedralMesh mesh;
-
-    // Build a simple mesh of two tetrahedra sharing one face
-    //
-    //       3
-    //      /|\
-    //     / | \
-    //    /  |  \
-    //   0---1---4
-    //    \  |  /
-    //     \ | /
-    //      \|/
-    //       2
-    //
-    // Tet A: 0,1,2,3
-    // Tet B: 1,4,2,3  (shares face 1,2,3 with Tet A)
-
-    auto v0 = mesh.add_vertex({-1,  0, -1});
-    auto v1 = mesh.add_vertex({ 0,  0,  0});
-    auto v2 = mesh.add_vertex({ 0, -1,  0});
-    auto v3 = mesh.add_vertex({ 0,  1,  0});
-    auto v4 = mesh.add_vertex({ 1,  0, -1});
-
-    auto c0 = mesh.add_cell(CellType::Tet, {v0, v1, v2, v3});
-    auto c1 = mesh.add_cell(CellType::Tet, {v1, v4, v2, v3});
-
-    std::cout << "Mesh: "
-              << mesh.num_vertices() << " vertices, "
-              << mesh.num_cells()    << " cells, "
-              << mesh.num_halffaces()<< " halffaces, "
-              << mesh.num_faces()    << " faces\n\n";
-
-    // --- Iterate over all cells ---
-    std::cout << "=== Cells ===\n";
-    for (auto cell : mesh.cells()) {
-        std::cout << "  Cell (slot=" << cell.id().slot << ")"
-                  << "  boundary=" << cell.is_boundary() << "\n";
-
-        std::cout << "    vertices:";
-        for (auto v : cell.vertices())
-            std::cout << " " << v.id().slot;
-        std::cout << "\n";
-
-        std::cout << "    adjacent cells:";
-        for (auto nb : cell.adjacent_cells())
-            std::cout << " " << nb.id().slot;
-        std::cout << "\n";
-    }
-
-    // --- Iterate over all halffaces ---
-    std::cout << "\n=== HalfFaces ===\n";
-    for (auto hf : mesh.halffaces()) {
-        std::cout << "  HF (slot=" << hf.id().slot << ")"
-                  << "  boundary=" << hf.is_boundary()
-                  << "  cell=" << hf.cell().id().slot
-                  << "\n";
-    }
-
-    // --- Iterate over all vertices ---
-    std::cout << "\n=== Vertices ===\n";
-    for (auto v : mesh.vertices()) {
-        std::cout << "  V (slot=" << v.id().slot << ")"
-                  << "  boundary=" << v.is_boundary()
-                  << "  pos=(" << v.position().x << ","
-                               << v.position().y << ","
-                               << v.position().z << ")\n";
-    }
-
-    // --- Validate ---
-    auto report = mesh.validate();
-    std::cout << "\nValidation: " << (report.ok ? "OK" : "FAILED") << "\n";
-    for (const auto& issue : report.issues)
-        std::cout << "  Issue: " << issue.message << "\n";
-
-    // --- Delete a cell and check boundary updates ---
-    std::cout << "\n--- Deleting cell c0 ---\n";
-    mesh.delete_cell(c0);
-    std::cout << "After delete: "
-              << mesh.num_cells() << " cells, "
-              << mesh.num_halffaces() << " halffaces, "
-              << mesh.num_faces() << " faces\n";
-
-    std::cout << "Remaining cell boundary=" << c1.is_boundary() << "\n";
-
-    auto report2 = mesh.validate();
-    std::cout << "Validation after delete: " << (report2.ok ? "OK" : "FAILED") << "\n";
-    for (const auto& issue : report2.issues)
-        std::cout << "  Issue: " << issue.message << "\n";
+bool same_ids(std::vector<std::uint32_t> a, std::vector<std::uint32_t> b)
+{
+    std::sort(a.begin(), a.end());
+    std::sort(b.begin(), b.end());
+    return a == b;
 }
 
-void NewAPISmoke() {
-    PolyhedralMesh mesh;
-    auto v0 = mesh.add_vertex({0,0,0});
-    auto v1 = mesh.add_vertex({1,0,0});
-    auto v2 = mesh.add_vertex({0,1,0});
-    auto v3 = mesh.add_vertex({0,0,1});
-    auto v4 = mesh.add_vertex({1,0,1});
-    auto c0 = mesh.add_cell(CellType::Tet, {v0,v1,v2,v3});
-    auto c1 = mesh.add_cell(CellType::Tet, {v1,v4,v2,v3});
+int SimpleExample(){
+    std::vector<std::vector<double>> vertices = {
+        {0.0, 0.0, 0.0},
+        {1.0, 0.0, 0.0},
+        {0.0, 1.0, 0.0},
+        {0.0, 0.0, 1.0},
+        {1.0, 1.0, 1.0}};
 
-    // FaceHandle iteration
-    int boundary_faces = 0;
-    for (auto f : mesh.faces())
-        if (f.is_boundary()) ++boundary_faces;
-    std::cout << "Boundary faces: " << boundary_faces << "\n";
+    std::vector<std::vector<std::uint32_t>> cells = {
+        {0, 1, 2, 3},
+        {1, 2, 3, 4}};
 
-    // vertex_cells
-    auto vcells = mesh.vertex_cells(v1);
-    std::cout << "vertex v1 incident cells: " << vcells.size() << "\n";
+    std::vector<SolidMesh::CellType> celltypes = {
+        SolidMesh::CellType::Tet,
+        SolidMesh::CellType::Tet};
 
-    // vertex_halffaces
-    auto vhfs = mesh.vertex_halffaces(v1);
-    std::cout << "vertex v1 incident halffaces: " << vhfs.size() << "\n";
+    SolidMesh::Mesh mesh;
+    mesh.build_topology(vertices, cells, celltypes);
 
-    // cell_edges
-    auto edges = mesh.cell_edges(c0);
-    std::cout << "cell c0 edges: " << edges.size() << "\n";
+    bool ok = true;
+    auto check = [&](bool condition, const char *name) {
+        std::cout << "[topology] " << name << ": " << (condition ? "ok" : "failed") << '\n';
+        ok = ok && condition;
+    };
 
-    // index-based access
-    std::cout << "cell_at(0) valid: " << mesh.is_handle_valid(mesh.cell_at(0)) << "\n";
-    std::cout << "face_at(0) boundary: " << mesh.face_at(0).is_boundary() << "\n";
+    check(mesh.num_vertices() == 5, "vertex count");
+    check(mesh.num_cells() == 2, "cell count");
+    check(mesh.num_halffaces() == 8, "halfface count");
+    check(mesh.num_faces() == 7, "face count");
+    check(mesh.num_edges() == 9, "edge count");
+    check(mesh.num_dedges() == 18, "directed edge count");
 
-    // is_boundary(vertex) via vertex_cell_adj_
-    std::cout << "v1 is_boundary: " << mesh.is_boundary(v1) << "\n";
+    int interior_faces = 0;
+    for (std::uint32_t fi = 0; fi < mesh.num_faces(); ++fi)
+    {
+        const SolidMesh::Face &face = mesh.face_at(fi);
+        if (face.hf0 != SolidMesh::invalid_id && face.hf1 != SolidMesh::invalid_id)
+        {
+            ++interior_faces;
+            check(mesh.halfface_at(face.hf0).opposite == face.hf1, "hf0 opposite");
+            check(mesh.halfface_at(face.hf1).opposite == face.hf0, "hf1 opposite");
+        }
+    }
+    check(interior_faces == 1, "shared face count");
 
-    auto report = mesh.validate();
-    std::cout << "Validation: " << (report.ok ? "OK" : "FAILED") << "\n";
-    for (const auto& issue : report.issues)
-        std::cout << "  Issue: " << issue.message << "\n";
+    check(same_ids(mesh.cell_cells(0), {1}), "cell 0 neighbor");
+    check(same_ids(mesh.cell_cells(1), {0}), "cell 1 neighbor");
+    check(same_ids(mesh.vertex_vertices(1), {0, 2, 3, 4}), "vertex 1 ring");
+
+    std::uint32_t edge_12_dedge = SolidMesh::invalid_id;
+    for (std::uint32_t dei = 0; dei < mesh.num_dedges(); ++dei)
+    {
+        const SolidMesh::DirectedEdge &dedge = mesh.dedge_at(dei);
+        if (dedge.start == 1 && dedge.end == 2)
+        {
+            edge_12_dedge = dei;
+            break;
+        }
+    }
+    check(edge_12_dedge != SolidMesh::invalid_id, "directed edge 1 -> 2 exists");
+    if (edge_12_dedge != SolidMesh::invalid_id)
+    {
+        check(same_ids(mesh.edge_cells_ccw(edge_12_dedge), {0, 1}), "edge 1-2 cells");
+    }
+
+    check(mesh.cell_vertices(0).size() == 4, "cell vertices span");
+    check(mesh.cell_halffaces(0).size() == 4, "cell halffaces span");
+
+    std::cout << "[topology] result: " << (ok ? "passed" : "failed") << '\n';
+    return ok ? 0 : 1;
 }
 
 int main() {
     SimpleExample();
-    std::cout << "\n=== New API Smoke Test ===\n";
-    NewAPISmoke();
-
-    std::string path="assets/bpgc.vtk";
-
-    // start time
-    auto start = std::chrono::high_resolution_clock::now();
-    PolyhedralMesh mesh;
-    
-    if(!MeshIO::read_vtk(path,mesh)){
-        printf("Read .vtk FAILED!\n");
-        return 0;
-    }
-
-    // end time
-    auto end = std::chrono::high_resolution_clock::now();
-
-    // time cost, ms
-    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
-
-    std::cout << "Mesh: "
-              << mesh.num_vertices() << " vertices, "
-              << mesh.num_cells()    << " cells, "
-              << mesh.num_halffaces()<< " halffaces, "
-              << mesh.num_faces()    << " faces\n";
-    std::cout << "Time cost: " << duration.count() << " ms\n\n";
-
     return 0;
 }
+
