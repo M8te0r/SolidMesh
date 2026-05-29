@@ -1,0 +1,105 @@
+#pragma once
+#include <cmath>
+#include <cstddef>
+#include <functional>
+#include <iostream>
+#include <limits>
+#include <sstream>
+#include <string>
+
+namespace SolidMesh
+{
+        // Components are stored scalar-first: q = w + xi + yj + zk.
+        // Keep this as an aggregate type, matching SolidMesh::Vector3 style.
+        struct Quaternion
+        {
+            double w, x, y, z;
+
+            static Quaternion identity() { return Quaternion{1., 0., 0., 0.}; }
+            static Quaternion zero() { return Quaternion{0., 0., 0., 0.}; }
+            static Quaternion constant(double c) { return Quaternion{c, c, c, c}; }
+            static Quaternion infinity()
+            {
+                const double inf = ::std::numeric_limits<double>::infinity();
+                return Quaternion{inf, inf, inf, inf};
+            }
+            static Quaternion undefined()
+            {
+                const double nan = ::std::numeric_limits<double>::quiet_NaN();
+                return Quaternion{nan, nan, nan, nan};
+            }
+
+            static Quaternion fromRotationMatrix(const double m[9]); // row-major
+            static Quaternion fromAxisAngle(const double axis[3], double theta);
+
+            double &operator[](int index) { return (&w)[index]; }
+            double operator[](int index) const { return (&w)[index]; }
+
+            Quaternion operator+(const Quaternion &q) const;
+            Quaternion operator-(const Quaternion &q) const;
+            Quaternion operator*(const Quaternion &q) const;
+            Quaternion operator*(double s) const;
+            Quaternion operator/(double s) const;
+            Quaternion &operator+=(const Quaternion &q);
+            Quaternion &operator-=(const Quaternion &q);
+            Quaternion &operator*=(const Quaternion &q);
+            Quaternion &operator*=(const double &s);
+            Quaternion &operator/=(const double &s);
+            bool operator==(const Quaternion &q) const;
+            bool operator!=(const Quaternion &q) const;
+            const Quaternion operator-() const;
+
+            Quaternion conjugate() const;
+            Quaternion inverse() const;
+            Quaternion normalize() const;
+            Quaternion normalizeCutoff(double mag = 0.) const;
+            Quaternion unit() const;
+
+            double norm() const;
+            double norm2() const;
+
+            void to_matrix(double *mat) const; // column-major
+            void to_euler(double &psi, double &theta, double &phi) const;
+            void rotate(const double *v, double *out) const;
+
+            bool isFinite() const;
+            bool isDefined() const;
+        };
+
+        template <typename T>
+        Quaternion operator*(const T s, const Quaternion &q);
+
+        ::std::ostream &operator<<(::std::ostream &output, const Quaternion &q);
+        ::std::istream &operator>>(::std::istream &input, Quaternion &q);
+
+        double norm(const Quaternion &q);
+        double norm2(const Quaternion &q);
+        double dot(const Quaternion &p, const Quaternion &q);
+
+        Quaternion conjugate(const Quaternion &q);
+        Quaternion inverse(const Quaternion &q);
+        Quaternion normalize(const Quaternion &q);
+        Quaternion normalizeCutoff(const Quaternion &q, double mag = 0.);
+        Quaternion unit(const Quaternion &q);
+
+        void to_matrix(const Quaternion &q, double *mat);
+        void to_euler(const Quaternion &q, double &psi, double &theta, double &phi);
+        void rotate(const Quaternion &q, const double *v, double *out);
+        bool isfinite(const Quaternion &q);
+        bool isDefined(const Quaternion &q);
+
+} // namespace SolidMesh
+
+namespace std
+{
+    template <>
+    struct hash<SolidMesh::Quaternion>
+    {
+        std::size_t operator()(const SolidMesh::Quaternion &q) const;
+    };
+
+    std::string to_string(SolidMesh::Quaternion value);
+
+} // namespace std
+
+#include "quaternion.inl"
