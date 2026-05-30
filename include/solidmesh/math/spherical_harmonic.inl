@@ -1,4 +1,3 @@
-#include "spherical_harmonic.h"
 #include "quaternion.h"
 namespace SolidMesh
 {
