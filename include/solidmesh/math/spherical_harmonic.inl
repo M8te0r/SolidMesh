@@ -261,6 +261,25 @@ namespace SolidMesh
         *w = -0.5 * std::sqrt((l - abs_m - 1.0) * (l - abs_m) / denom) * (1.0 - d);
     }
 
+    inline void SphericalHarmonic::create_sp_band_rotation(int l, const double *quaternion, double *wigner_d)
+    {
+        const int coeff_count = coefficient_count(l);
+        const int band_coeff_count = 2 * l + 1;
+        double *full_wigner_d = new double[coeff_count * coeff_count];
+        create_sp_rotation(l, quaternion, full_wigner_d);
+
+        for (int m = -l; m <= l; m++)
+        {
+            for (int n = -l; n <= l; n++)
+            {
+                wigner_d[(m + l) + (n + l) * band_coeff_count] =
+                    full_wigner_d[index(l, m) + index(l, n) * coeff_count];
+            }
+        }
+
+        delete[] full_wigner_d;
+    }
+
     inline void SphericalHarmonic::create_sp_rotation(int order, const double* quaternion, double *wigner_d)
     {
         const Quaternion q{quaternion[0], quaternion[1], quaternion[2], quaternion[3]};
@@ -314,6 +333,35 @@ namespace SolidMesh
                     spherical_harmonic_rotation_set(wigner_d, coeff_count, l, m, n, value);
                 }
             }
+        }
+    }
+
+    inline void SphericalHarmonic::sp_band_rotate(int l, const double *coeffs, const double *wigner_d, double *result)
+    {
+        const int band_coeff_count = 2 * l + 1;
+        double *rotated = result;
+        if (result == coeffs)
+        {
+            rotated = new double[band_coeff_count];
+        }
+
+        for (int m = 0; m < band_coeff_count; m++)
+        {
+            double value = 0.0;
+            for (int n = 0; n < band_coeff_count; n++)
+            {
+                value += wigner_d[m + n * band_coeff_count] * coeffs[n];
+            }
+            rotated[m] = value;
+        }
+
+        if (rotated != result)
+        {
+            for (int i = 0; i < band_coeff_count; i++)
+            {
+                result[i] = rotated[i];
+            }
+            delete[] rotated;
         }
     }
 

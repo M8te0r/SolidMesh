@@ -71,10 +71,14 @@ namespace SolidMesh
         static constexpr double eval_sum(int order, const double *coeffs, const double *unit_dir);
 
 
-        // 根据quaternion(w,x,y,z)，为l阶spherical harmonics系数创造一个col-major旋转矩阵wigner_d
-        static void create_sp_rotation(int order, const double* quaternion, double *wigner_d);
-        // 给定一组spherical harmonics系数coeffs，和一个旋转矩阵wigner_d，得到旋转后的结果result
-        static void sp_rotate(int order, const double *coeffs, const double *wigner_d, double *result);
+        // 根据quaternion(w,x,y,z)，为l阶sp basis系数(=1、3、5、...)创造一个col-major旋转矩阵wigner_d
+        static void create_sp_band_rotation(int l, const double *quaternion, double *wigner_d);
+        // 根据quaternion(w,x,y,z)，为order阶sph展开的所有系数(=1+3+5+7+...)创造一个col-major旋转矩阵wigner_d
+        static void create_sp_rotation(int order, const double* quaternion, double *mat);
+        // 给定band=l的sp basis的系数coeffs，和对应的旋转矩阵wigner_d，得到系数旋转后的结果result
+        static void sp_band_rotate(int l, const double *coeffs, const double *wigner_d, double *result);
+        // 给定一个order阶sp展开的全部系数，和对应的旋转矩阵mat，得到系数旋转后的结果result
+        static void sp_rotate(int order, const double *coeffs, const double *mat, double *result);
     };
 
 } // namespace SolidMesh
