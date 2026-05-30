@@ -1,31 +1,34 @@
+#include "vector3.h"
+
 namespace SolidMesh
 {
-        inline Quaternion Quaternion::fromRotationMatrix(const double m[9])
+        inline Quaternion Quaternion::fromRotationMatrix(const double* mat)
         {
-            const double trace = m[0] + m[4] + m[8];
+            const double trace = mat[0] + mat[4] + mat[8];
             if (trace > 0.)
             {
                 const double s = 2. * ::std::sqrt(trace + 1.);
-                return Quaternion{0.25 * s, (m[7] - m[5]) / s, (m[2] - m[6]) / s, (m[3] - m[1]) / s};
+                return Quaternion{0.25 * s, (mat[5] - mat[7]) / s, (mat[6] - mat[2]) / s, (mat[1] - mat[3]) / s};
             }
-            if (m[0] > m[4] && m[0] > m[8])
+            if (mat[0] > mat[4] && mat[0] > mat[8])
             {
-                const double s = 2. * ::std::sqrt(1. + m[0] - m[4] - m[8]);
-                return Quaternion{(m[7] - m[5]) / s, 0.25 * s, (m[1] + m[3]) / s, (m[2] + m[6]) / s};
+                const double s = 2. * ::std::sqrt(1. + mat[0] - mat[4] - mat[8]);
+                return Quaternion{(mat[5] - mat[7]) / s, 0.25 * s, (mat[3] + mat[1]) / s, (mat[6] + mat[2]) / s};
             }
-            if (m[4] > m[8])
+            if (mat[4] > mat[8])
             {
-                const double s = 2. * ::std::sqrt(1. + m[4] - m[0] - m[8]);
-                return Quaternion{(m[2] - m[6]) / s, (m[1] + m[3]) / s, 0.25 * s, (m[5] + m[7]) / s};
+                const double s = 2. * ::std::sqrt(1. + mat[4] - mat[0] - mat[8]);
+                return Quaternion{(mat[6] - mat[2]) / s, (mat[3] + mat[1]) / s, 0.25 * s, (mat[7] + mat[5]) / s};
             }
 
-            const double s = 2. * ::std::sqrt(1. + m[8] - m[0] - m[4]);
-            return Quaternion{(m[3] - m[1]) / s, (m[2] + m[6]) / s, (m[5] + m[7]) / s, 0.25 * s};
+            const double s = 2. * ::std::sqrt(1. + mat[8] - mat[0] - mat[4]);
+            return Quaternion{(mat[1] - mat[3]) / s, (mat[6] + mat[2]) / s, (mat[7] + mat[5]) / s, 0.25 * s};
         }
 
-        inline Quaternion Quaternion::fromAxisAngle(const double axis[3], double theta)
+        inline Quaternion Quaternion::fromAxisAngle(const double* axis, double theta)
         {
-            const double axisNorm = ::std::sqrt(axis[0] * axis[0] + axis[1] * axis[1] + axis[2] * axis[2]);
+            const Vector3 axis_v{axis[0], axis[1], axis[2]};
+            const double axisNorm = axis_v.norm();
             if (axisNorm == 0.)
             {
                 return identity();
@@ -33,7 +36,8 @@ namespace SolidMesh
 
             const double halfTheta = 0.5 * theta;
             const double s = ::std::sin(halfTheta) / axisNorm;
-            return Quaternion{::std::cos(halfTheta), axis[0] * s, axis[1] * s, axis[2] * s};
+            const Vector3 v = axis_v * s;
+            return Quaternion{::std::cos(halfTheta), v.x, v.y, v.z};
         }
 
         inline Quaternion Quaternion::operator+(const Quaternion &q) const
@@ -224,8 +228,11 @@ namespace SolidMesh
 
         inline void Quaternion::rotate(const double *v, double *out) const
         {
-            const Quaternion p{0., v[0], v[1], v[2]};
-            const Quaternion r = (*this) * p * inverse();
+            const Quaternion q = normalize();
+            const Vector3 qv{q.x, q.y, q.z};
+            const Vector3 p{v[0], v[1], v[2]};
+            const Vector3 t = 2.0 * cross(qv, p);
+            const Vector3 r = p + q.w * t + cross(qv, t);
             out[0] = r.x;
             out[1] = r.y;
             out[2] = r.z;

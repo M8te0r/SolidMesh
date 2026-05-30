@@ -15,6 +15,10 @@ namespace SolidMesh
         {
             double w, x, y, z;
 
+            // implicit conversion
+            operator const double *() const { return &w; }
+            operator double *() { return &w; }
+
             static Quaternion identity() { return Quaternion{1., 0., 0., 0.}; }
             static Quaternion zero() { return Quaternion{0., 0., 0., 0.}; }
             static Quaternion constant(double c) { return Quaternion{c, c, c, c}; }
@@ -29,8 +33,10 @@ namespace SolidMesh
                 return Quaternion{nan, nan, nan, nan};
             }
 
-            static Quaternion fromRotationMatrix(const double m[9]); // row-major
-            static Quaternion fromAxisAngle(const double axis[3], double theta);
+            // 根据一个3*3旋转矩阵（column-major）生成quaternion
+            static Quaternion fromRotationMatrix(const double *mat); // column-major
+            // 创建一个绕着指定旋转轴 axis 旋转 theta 弧度的Quaternion。
+            static Quaternion fromAxisAngle(const double* axis, double theta);
 
             double &operator[](int index) { return (&w)[index]; }
             double operator[](int index) const { return (&w)[index]; }
@@ -58,8 +64,11 @@ namespace SolidMesh
             double norm() const;
             double norm2() const;
 
-            void to_matrix(double *mat) const; // column-major
+            // 将quaternion转换为3*3旋转矩阵mat(col-major)
+            void to_matrix(double *mat) const; 
             void to_euler(double &psi, double &theta, double &phi) const;
+
+            // 使用当前quaternion旋转向量v，输出out
             void rotate(const double *v, double *out) const;
 
             bool isFinite() const;
@@ -82,6 +91,7 @@ namespace SolidMesh
         Quaternion normalizeCutoff(const Quaternion &q, double mag = 0.);
         Quaternion unit(const Quaternion &q);
 
+        // 将quaternion转换为3*3旋转矩阵mat(col-major)
         void to_matrix(const Quaternion &q, double *mat);
         void to_euler(const Quaternion &q, double &psi, double &theta, double &phi);
         void rotate(const Quaternion &q, const double *v, double *out);

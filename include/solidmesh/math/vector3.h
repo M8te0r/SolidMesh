@@ -15,6 +15,10 @@ namespace SolidMesh
         // Components
         double x, y, z;
 
+        // implicit conversion
+        operator const double *() const { return &x; }
+        operator double *() { return &x; }
+
         static Vector3 zero() { return Vector3{0., 0., 0.}; }
         static Vector3 constant(double c) { return Vector3{c, c, c}; }
         static Vector3 infinity()

@@ -69,6 +69,12 @@ namespace SolidMesh
         // 用一组球谐系数重建某个球坐标方向上的函数值
         static double eval_sum(int order, const double *coeffs, double phi, double theta);
         static constexpr double eval_sum(int order, const double *coeffs, const double *unit_dir);
+
+
+        // 根据quaternion(w,x,y,z)，为l阶spherical harmonics系数创造一个col-major旋转矩阵wigner_d
+        static void create_sp_rotation(int order, const double* quaternion, double *wigner_d);
+        // 给定一组spherical harmonics系数coeffs，和一个旋转矩阵wigner_d，得到旋转后的结果result
+        static void sp_rotate(int order, const double *coeffs, const double *wigner_d, double *result);
     };
 
 } // namespace SolidMesh

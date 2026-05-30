@@ -1,4 +1,5 @@
 #include "spherical_harmonic.h"
+#include "quaternion.h"
 namespace SolidMesh
 {
     inline constexpr double SphericalHarmonic::clamp(double val, double low, double high)
@@ -173,5 +174,179 @@ namespace SolidMesh
             }
         }
         return sum;
+    }
+
+    inline double spherical_harmonic_rotation_delta(int i, int j)
+    {
+        return i == j ? 1.0 : 0.0;
+    }
+
+    inline double spherical_harmonic_rotation_get(const double *wigner_d, int coeff_count, int l, int m, int n)
+    {
+        return wigner_d[SphericalHarmonic::index(l, m) + SphericalHarmonic::index(l, n) * coeff_count];
+    }
+
+    inline void spherical_harmonic_rotation_set(double *wigner_d, int coeff_count, int l, int m, int n, double value)
+    {
+        wigner_d[SphericalHarmonic::index(l, m) + SphericalHarmonic::index(l, n) * coeff_count] = value;
+    }
+
+    inline double spherical_harmonic_rotation_p(int i, int a, int b, int l, const double *wigner_d, int coeff_count)
+    {
+        if (b == l)
+        {
+            return spherical_harmonic_rotation_get(wigner_d, coeff_count, 1, i, 1) *
+                       spherical_harmonic_rotation_get(wigner_d, coeff_count, l - 1, a, l - 1) -
+                   spherical_harmonic_rotation_get(wigner_d, coeff_count, 1, i, -1) *
+                       spherical_harmonic_rotation_get(wigner_d, coeff_count, l - 1, a, -l + 1);
+        }
+        if (b == -l)
+        {
+            return spherical_harmonic_rotation_get(wigner_d, coeff_count, 1, i, 1) *
+                       spherical_harmonic_rotation_get(wigner_d, coeff_count, l - 1, a, -l + 1) +
+                   spherical_harmonic_rotation_get(wigner_d, coeff_count, 1, i, -1) *
+                       spherical_harmonic_rotation_get(wigner_d, coeff_count, l - 1, a, l - 1);
+        }
+        return spherical_harmonic_rotation_get(wigner_d, coeff_count, 1, i, 0) *
+               spherical_harmonic_rotation_get(wigner_d, coeff_count, l - 1, a, b);
+    }
+
+    inline double spherical_harmonic_rotation_u(int m, int n, int l, const double *wigner_d, int coeff_count)
+    {
+        return spherical_harmonic_rotation_p(0, m, n, l, wigner_d, coeff_count);
+    }
+
+    inline double spherical_harmonic_rotation_v(int m, int n, int l, const double *wigner_d, int coeff_count)
+    {
+        if (m == 0)
+        {
+            return spherical_harmonic_rotation_p(1, 1, n, l, wigner_d, coeff_count) +
+                   spherical_harmonic_rotation_p(-1, -1, n, l, wigner_d, coeff_count);
+        }
+        if (m > 0)
+        {
+            return spherical_harmonic_rotation_p(1, m - 1, n, l, wigner_d, coeff_count) *
+                       std::sqrt(1.0 + spherical_harmonic_rotation_delta(m, 1)) -
+                   spherical_harmonic_rotation_p(-1, -m + 1, n, l, wigner_d, coeff_count) *
+                       (1.0 - spherical_harmonic_rotation_delta(m, 1));
+        }
+        return spherical_harmonic_rotation_p(1, m + 1, n, l, wigner_d, coeff_count) *
+                   (1.0 - spherical_harmonic_rotation_delta(m, -1)) +
+               spherical_harmonic_rotation_p(-1, -m - 1, n, l, wigner_d, coeff_count) *
+                   std::sqrt(1.0 + spherical_harmonic_rotation_delta(m, -1));
+    }
+
+    inline double spherical_harmonic_rotation_w(int m, int n, int l, const double *wigner_d, int coeff_count)
+    {
+        if (m == 0)
+        {
+            return 0.0;
+        }
+        if (m > 0)
+        {
+            return spherical_harmonic_rotation_p(1, m + 1, n, l, wigner_d, coeff_count) +
+                   spherical_harmonic_rotation_p(-1, -m - 1, n, l, wigner_d, coeff_count);
+        }
+        return spherical_harmonic_rotation_p(1, m - 1, n, l, wigner_d, coeff_count) -
+               spherical_harmonic_rotation_p(-1, -m + 1, n, l, wigner_d, coeff_count);
+    }
+
+    inline void spherical_harmonic_rotation_uvws(int m, int n, int l, double *u, double *v, double *w)
+    {
+        const double d = spherical_harmonic_rotation_delta(m, 0);
+        const double denom = std::abs(n) == l ? 2.0 * l * (2.0 * l - 1.0) : (l + n) * (l - n);
+        const int abs_m = std::abs(m);
+
+        *u = std::sqrt((l + m) * (l - m) / denom);
+        *v = 0.5 * std::sqrt((1.0 + d) * (l + abs_m - 1.0) * (l + abs_m) / denom) * (1.0 - 2.0 * d);
+        *w = -0.5 * std::sqrt((l - abs_m - 1.0) * (l - abs_m) / denom) * (1.0 - d);
+    }
+
+    inline void SphericalHarmonic::create_sp_rotation(int order, const double* quaternion, double *wigner_d)
+    {
+        const Quaternion q{quaternion[0], quaternion[1], quaternion[2], quaternion[3]};
+        const int coeff_count = coefficient_count(order);
+        for (int i = 0; i < coeff_count * coeff_count; i++)
+        {
+            wigner_d[i] = 0.0;
+        }
+
+        spherical_harmonic_rotation_set(wigner_d, coeff_count, 0, 0, 0, 1.0);
+        if (order == 0)
+        {
+            return;
+        }
+
+        double rotation_mat[9];
+        q.to_matrix(rotation_mat);
+        spherical_harmonic_rotation_set(wigner_d, coeff_count, 1, -1, -1, rotation_mat[1 + 3 * 1]);
+        spherical_harmonic_rotation_set(wigner_d, coeff_count, 1, -1, 0, -rotation_mat[1 + 3 * 2]);
+        spherical_harmonic_rotation_set(wigner_d, coeff_count, 1, -1, 1, rotation_mat[1 + 3 * 0]);
+        spherical_harmonic_rotation_set(wigner_d, coeff_count, 1, 0, -1, -rotation_mat[2 + 3 * 1]);
+        spherical_harmonic_rotation_set(wigner_d, coeff_count, 1, 0, 0, rotation_mat[2 + 3 * 2]);
+        spherical_harmonic_rotation_set(wigner_d, coeff_count, 1, 0, 1, -rotation_mat[2 + 3 * 0]);
+        spherical_harmonic_rotation_set(wigner_d, coeff_count, 1, 1, -1, rotation_mat[0 + 3 * 1]);
+        spherical_harmonic_rotation_set(wigner_d, coeff_count, 1, 1, 0, -rotation_mat[0 + 3 * 2]);
+        spherical_harmonic_rotation_set(wigner_d, coeff_count, 1, 1, 1, rotation_mat[0 + 3 * 0]);
+
+        for (int l = 2; l <= order; l++)
+        {
+            for (int m = -l; m <= l; m++)
+            {
+                for (int n = -l; n <= l; n++)
+                {
+                    double u, v, w;
+                    spherical_harmonic_rotation_uvws(m, n, l, &u, &v, &w);
+
+                    double value = 0.0;
+                    if (u != 0.0)
+                    {
+                        value += u * spherical_harmonic_rotation_u(m, n, l, wigner_d, coeff_count);
+                    }
+                    if (v != 0.0)
+                    {
+                        value += v * spherical_harmonic_rotation_v(m, n, l, wigner_d, coeff_count);
+                    }
+                    if (w != 0.0)
+                    {
+                        value += w * spherical_harmonic_rotation_w(m, n, l, wigner_d, coeff_count);
+                    }
+
+                    spherical_harmonic_rotation_set(wigner_d, coeff_count, l, m, n, value);
+                }
+            }
+        }
+    }
+
+    inline void SphericalHarmonic::sp_rotate(int order, const double *coeffs, const double *wigner_d, double *result)
+    {
+        const int coeff_count = coefficient_count(order);
+        double *rotated = result;
+        if (result == coeffs)
+        {
+            rotated = new double[coeff_count];
+        }
+
+        for (int l = 0; l <= order; l++)
+        {
+            for (int m = -l; m <= l; m++)
+            {
+                double value = 0.0;
+                for (int n = -l; n <= l; n++)
+                {
+                    value += spherical_harmonic_rotation_get(wigner_d, coeff_count, l, m, n) * coeffs[index(l, n)];
+                }
+                rotated[index(l, m)] = value;
+            }
+        }
+
+        if (rotated != result)
+        {
+            for (int i = 0; i < coeff_count; i++)
+            {
+                result[i] = rotated[i];
+            }
+            delete[] rotated;
+        }
     }
 } // namespace SolidMesh

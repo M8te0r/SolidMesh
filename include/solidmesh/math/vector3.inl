@@ -205,7 +205,7 @@ namespace SolidMesh
     return input;
   }
 
-} // namespace Polyhedra
+} // namespace SolidMesh
 
 namespace std
 {
