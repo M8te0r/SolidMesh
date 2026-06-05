@@ -128,10 +128,8 @@ namespace SolidMesh
         inline bool Quaternion::operator!=(const Quaternion &q) const { return !(*this == q); }
 
         inline double Quaternion::norm() const { return ::std::sqrt(w * w + x * x + y * y + z * z); }
-        inline double norm(const Quaternion &q) { return q.norm(); }
 
         inline double Quaternion::norm2() const { return w * w + x * x + y * y + z * z; }
-        inline double norm2(const Quaternion &q) { return q.norm2(); }
 
         inline double dot(const Quaternion &p, const Quaternion &q)
         {
@@ -139,20 +137,17 @@ namespace SolidMesh
         }
 
         inline Quaternion Quaternion::conjugate() const { return Quaternion{w, -x, -y, -z}; }
-        inline Quaternion conjugate(const Quaternion &q) { return q.conjugate(); }
 
         inline Quaternion Quaternion::inverse() const
         {
             return conjugate() / norm2();
         }
-        inline Quaternion inverse(const Quaternion &q) { return q.inverse(); }
 
         inline Quaternion Quaternion::normalize() const
         {
             const double r = 1. / ::std::sqrt(w * w + x * x + y * y + z * z);
             return *this * r;
         }
-        inline Quaternion normalize(const Quaternion &q) { return q.normalize(); }
 
         inline Quaternion Quaternion::normalizeCutoff(double mag) const
         {
@@ -164,10 +159,8 @@ namespace SolidMesh
             const double r = 1. / len;
             return *this * r;
         }
-        inline Quaternion normalizeCutoff(const Quaternion &q, double mag) { return q.normalizeCutoff(mag); }
 
         inline Quaternion Quaternion::unit() const { return normalize(); }
-        inline Quaternion unit(const Quaternion &q) { return normalize(q); }
 
         inline void Quaternion::to_matrix(double *mat) const
         {
@@ -192,7 +185,6 @@ namespace SolidMesh
             mat[7] = 2. * (yz - wx);
             mat[8] = 1. - 2. * (xx + yy);
         }
-        inline void to_matrix(const Quaternion &q, double *mat) { q.to_matrix(mat); }
 
         inline void Quaternion::to_euler(double &psi, double &theta, double &phi) const
         {
@@ -221,10 +213,7 @@ namespace SolidMesh
             const double cosyCosp = 1. - 2. * (q.y * q.y + q.z * q.z);
             psi = ::std::atan2(sinyCosp, cosyCosp);
         }
-        inline void to_euler(const Quaternion &q, double &psi, double &theta, double &phi)
-        {
-            q.to_euler(psi, theta, phi);
-        }
+
 
         inline void Quaternion::rotate(const double *v, double *out) const
         {
@@ -237,19 +226,16 @@ namespace SolidMesh
             out[1] = r.y;
             out[2] = r.z;
         }
-        inline void rotate(const Quaternion &q, const double *v, double *out) { q.rotate(v, out); }
 
         inline bool Quaternion::isFinite() const
         {
             return ::std::isfinite(w) && ::std::isfinite(x) && ::std::isfinite(y) && ::std::isfinite(z);
         }
-        inline bool isfinite(const Quaternion &q) { return q.isFinite(); }
 
         inline bool Quaternion::isDefined() const
         {
             return (!::std::isnan(w)) && (!::std::isnan(x)) && (!::std::isnan(y)) && (!::std::isnan(z));
         }
-        inline bool isDefined(const Quaternion &q) { return q.isDefined(); }
 
         inline std::ostream &operator<<(std::ostream &output, const Quaternion &q)
         {

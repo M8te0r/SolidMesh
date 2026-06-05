@@ -81,22 +81,7 @@ namespace SolidMesh
         ::std::ostream &operator<<(::std::ostream &output, const Quaternion &q);
         ::std::istream &operator>>(::std::istream &input, Quaternion &q);
 
-        double norm(const Quaternion &q);
-        double norm2(const Quaternion &q);
         double dot(const Quaternion &p, const Quaternion &q);
-
-        Quaternion conjugate(const Quaternion &q);
-        Quaternion inverse(const Quaternion &q);
-        Quaternion normalize(const Quaternion &q);
-        Quaternion normalizeCutoff(const Quaternion &q, double mag = 0.);
-        Quaternion unit(const Quaternion &q);
-
-        // 将quaternion转换为3*3旋转矩阵mat(col-major)
-        void to_matrix(const Quaternion &q, double *mat);
-        void to_euler(const Quaternion &q, double &psi, double &theta, double &phi);
-        void rotate(const Quaternion &q, const double *v, double *out);
-        bool isfinite(const Quaternion &q);
-        bool isDefined(const Quaternion &q);
 
 } // namespace SolidMesh
 

@@ -14,7 +14,7 @@ namespace SolidMesh
      * @brief Real spherical harmonics, Google reference implementation
      * l - level, [0,4], isoline of zero zone 
      * m - mode, [-4,4], 
-     * each spherical function cooud represented by linear combination of spherical harmonic basis Y_l^m
+     * each spherical function could be represented by linear combination of spherical harmonic basis Y_l^m
      */
     struct SphericalHarmonic
     {
@@ -73,8 +73,8 @@ namespace SolidMesh
 
         // 根据quaternion(w,x,y,z)，为l阶sp basis系数(=1、3、5、...)创造一个col-major旋转矩阵wigner_d
         static void create_sp_band_rotation(int l, const double *quaternion, double *wigner_d);
-        // 根据quaternion(w,x,y,z)，为order阶sph展开的所有系数(=1+3+5+7+...)创造一个col-major旋转矩阵wigner_d
-        static void create_sp_rotation(int order, const double* quaternion, double *mat);
+        // 根据quaternion(w,x,y,z)，为order阶sph展开的所有系数(=1+3+5+7+...)创造一个col-major旋转矩阵mat
+        static void create_sp_rotation(int order, const double *quaternion, double *mat);
         // 给定band=l的sp basis的系数coeffs，和对应的旋转矩阵wigner_d，得到系数旋转后的结果result
         static void sp_band_rotate(int l, const double *coeffs, const double *wigner_d, double *result);
         // 给定一个order阶sp展开的全部系数，和对应的旋转矩阵mat，得到系数旋转后的结果result
