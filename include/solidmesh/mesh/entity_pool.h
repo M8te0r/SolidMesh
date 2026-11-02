@@ -2,7 +2,6 @@
 #include <vector>
 #include <cassert>
 #include <cstdint>
-#include "solidmesh/mesh/handles.h"
 
 namespace SolidMesh {
 

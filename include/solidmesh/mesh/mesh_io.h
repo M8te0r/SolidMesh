@@ -1,6 +1,6 @@
 #pragma once
 
-#include "polyhedral_mesh.h"
+#include "mesh.h"
 #include <string>
 
 namespace SolidMesh {
@@ -13,12 +13,15 @@ namespace SolidMesh {
 //     Unsupported cell types (e.g. lines, triangles) are silently skipped.
 //
 // Usage:
-//   PolyhedralMesh mesh;
+//   Mesh mesh;
 //   bool ok = MeshIO::read_vtk("path/to/file.vtk", mesh);
 class MeshIO {
 public:
-    static bool read_vtk(const std::string& path, PolyhedralMesh& mesh);
-    static bool write_vtk(const std::string& path, const PolyhedralMesh& mesh);
+    // Atomic on read failure. Unsupported non-volume cell types are skipped.
+    static bool read_vtk(const std::string& path, Mesh& mesh);
+    // Reconstructs a VTK-compatible positive local numbering from oriented face rings.
+    // Equivalent numbering may differ after a custom face-order insertion.
+    static bool write_vtk(const std::string& path, const Mesh& mesh);
 };
 
 } // namespace SolidMesh

@@ -2,6 +2,11 @@ file(GLOB_RECURSE POLYHEDRA_HEADERS CONFIGURE_DEPENDS "*.h" "*.hh" "*.hpp")
 
 add_library(polyhedra-core STATIC ${POLYHEDRA_HEADERS})
 add_library(SolidMesh::core ALIAS polyhedra-core)
+add_library(SolidMesh::SolidMesh ALIAS polyhedra-core)
+set_target_properties(polyhedra-core PROPERTIES
+    POSITION_INDEPENDENT_CODE ON
+    CXX_EXTENSIONS OFF
+)
 
 target_compile_features(polyhedra-core PUBLIC cxx_std_17)
 
