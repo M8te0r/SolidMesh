@@ -111,7 +111,11 @@ namespace SolidMesh
         // 顶点的1-ring顶点
         std::vector<uint32_t> vertex_vertices(uint32_t vi) const;
 
-        // 有向边的1-ring cell（右手定理，即从dedge的终点望向起点，，1-ring cell应该是ccw顺序的）
+        // 有向边的 1-ring cells：从终点望向起点时为 CCW（右手法则）。
+        // 内部边返回闭环（最小 cell id 为首项），边界边返回从无前驱端点开始的完整开链。
+        // 反向边次序相反；顺序在 build_topology 时缓存，查询仅复制 CSR 区间。
+        // 无效 dei 或局部边星不能组成单一流形开链/闭环时返回空，不返回部分结果。
+        // 依赖输入单元遵循 CellTopoPadded 的正向编号；不验证几何嵌入或体积。
         std::vector<uint32_t> edge_cells_ccw(uint32_t dei) const;
 
         // 有向面上的顶点（严格 CCW 顺序）

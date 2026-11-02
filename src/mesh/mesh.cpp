@@ -2,7 +2,6 @@
 
 #include <algorithm>
 #include <cassert>
-#include <cmath>
 
 namespace SolidMesh
 {
@@ -101,7 +100,8 @@ namespace SolidMesh
         struct EdgeCellRef
         {
             uint32_t edge = invalid_id;
-            uint32_t cell = invalid_id;
+            // The cell's outward half-face containing edge.v0 -> edge.v1.
+            uint32_t halfface = invalid_id;
         };
 
         std::unordered_map<FaceKey, uint32_t, FaceKeyHash> face_map;
@@ -131,6 +131,8 @@ namespace SolidMesh
         edge_map.reserve(total_face_edges);
         std::vector<EdgeCellRef> edge_cell_refs;
         edge_cell_refs.reserve(total_face_edges / 2);
+        std::vector<uint8_t> nonmanifold_edges;
+        nonmanifold_edges.reserve(total_face_edges / 2);
 
         auto ensure_dedge = [&](uint32_t start, uint32_t end) -> uint32_t { 
             const uint64_t key = edge_key(start, end);
@@ -154,6 +156,7 @@ namespace SolidMesh
             edge.de0 = de0_id;
             edge.de1 = de1_id;
             edges_.push_back(edge);
+            nonmanifold_edges.push_back(false);
 
             DirectedEdge de0;
             de0.id = de0_id;
@@ -181,17 +184,29 @@ namespace SolidMesh
 
             const CellTopoPadded &topo = cell_topo(cell.type);
             std::array<uint32_t, cell_traits_max_cell_face_count * cell_traits_max_face_vertex_count> cell_edges{};
+            std::array<uint32_t, cell_traits_max_cell_face_count * cell_traits_max_face_vertex_count> cell_edge_halffaces{};
             int cell_edge_count = 0;
 
-            auto register_cell_edge = [&](uint32_t edge_id) {
-                for (int i = 0; i < cell_edge_count; ++i)
+            auto register_cell_edge = [&](uint32_t de_id, uint32_t hf_id) {
+                const uint32_t edge_id = dedges_[de_id].edge;
+                int i = 0;
+                for (; i < cell_edge_count; ++i)
                 {
                     if (cell_edges[i] == edge_id)
                     {
-                        return;
+                        break;
                     }
                 }
-                cell_edges[cell_edge_count++] = edge_id;
+                if (i == cell_edge_count)
+                {
+                    cell_edges[i] = edge_id;
+                    cell_edge_halffaces[i] = invalid_id;
+                    ++cell_edge_count;
+                }
+                if (de_id == edges_[edge_id].de0)
+                {
+                    cell_edge_halffaces[i] = hf_id;
+                }
             };
 
             for (int local_face = 0; local_face < cell.halfface_count; ++local_face)
@@ -215,6 +230,7 @@ namespace SolidMesh
                 }
                 sort_key(key);
 
+                bool nonmanifold_face = false;
                 const auto face_found = face_map.find(key);
                 if (face_found == face_map.end())   // 创建新face，并绑定第一个hafface
                 {
@@ -237,12 +253,22 @@ namespace SolidMesh
                         halfface.opposite = face.hf0;
                         halffaces_[face.hf0].opposite = hf_id;
                     }
+                    else
+                    {
+                        nonmanifold_face = true;
+                    }
                 }
 
                 for (int i = 0; i < vertex_count; ++i)
                 {
                     const uint32_t de_id = ensure_dedge(halfface.v[i], halfface.v[(i + 1) % vertex_count]);    // 注册halfface上的每条directed edge
-                    register_cell_edge(dedges_[de_id].edge);
+                    register_cell_edge(de_id, hf_id);
+                    if (nonmanifold_face)
+                    {
+                        // An unpaired third face must not masquerade as a
+                        // boundary endpoint in an otherwise complete chain.
+                        nonmanifold_edges[dedges_[de_id].edge] = true;
+                    }
                 }
 
                 cell.halffaces[local_face] = hf_id;
@@ -251,7 +277,7 @@ namespace SolidMesh
 
             for (int i = 0; i < cell_edge_count; ++i)
             {
-                edge_cell_refs.push_back({cell_edges[i], cell.id});
+                edge_cell_refs.push_back({cell_edges[i], cell_edge_halffaces[i]});
             }
         }
 
@@ -285,70 +311,164 @@ namespace SolidMesh
             edge_cell_offsets[i] += edge_cell_offsets[i - 1];
         }
 
-        std::vector<uint32_t> edge_cells(edge_cell_refs.size(), invalid_id);
+        std::vector<uint32_t> edge_halffaces(edge_cell_refs.size(), invalid_id);
         std::vector<uint32_t> edge_cursor = edge_cell_offsets;
         for (const EdgeCellRef &ref : edge_cell_refs)
         {
-            edge_cells[edge_cursor[ref.edge]++] = ref.cell;
+            edge_halffaces[edge_cursor[ref.edge]++] = ref.halfface;
         }
 
-        std::vector<Vector3> cell_centroids(cells_.size(), Vector3::zero());
-        for (const Cell &cell : cells_)
+        // Crossing the outward face along v0 -> v1 gives the CCW successor,
+        // viewed from v1 towards v0. This also determines the boundary chain's
+        // start, which cannot be recovered from sorting centroid angles.
+        struct CellLink
         {
-            Vector3 centroid = Vector3::zero();
-            for (int i = 0; i < cell.vertex_count; ++i)
-            {
-                centroid += vertices_[cell.vertices[i]].point;
-            }
-            cell_centroids[cell.id] = centroid / static_cast<double>(cell.vertex_count);
-        }
-
-        dedge_cell_offsets_.assign(dedges_.size() + 1, 0);
-        for (const DirectedEdge &dedge : dedges_)
-        {
-            dedge_cell_offsets_[dedge.id + 1] = edge_cell_offsets[dedge.edge + 1] - edge_cell_offsets[dedge.edge];
-        }
-        for (size_t i = 1; i < dedge_cell_offsets_.size(); ++i)
-        {
-            dedge_cell_offsets_[i] += dedge_cell_offsets_[i - 1];
-        }
-
-        struct CellAngle
-        {
-            double angle = 0.0;
             uint32_t cell = invalid_id;
+            uint32_t successor = invalid_id;
+            uint32_t next = invalid_id;
+            bool has_predecessor = false;
+            bool visited = false;
         };
 
-        dedge_cells_.assign(dedge_cell_offsets_.back(), invalid_id);
-        std::vector<CellAngle> sorted_cells;
-        for (const DirectedEdge &dedge : dedges_)
+        std::vector<CellLink> links;
+        std::vector<uint32_t> ordered_cells;
+        auto order_edge = [&](const Edge &edge, bool &closed) -> bool {
+            links.clear();
+            ordered_cells.clear();
+            closed = false;
+            if (edge.v0 == edge.v1 || nonmanifold_edges[edge.id])
+            {
+                return false;
+            }
+
+            const uint32_t begin = edge_cell_offsets[edge.id];
+            const uint32_t end = edge_cell_offsets[edge.id + 1];
+            links.reserve(end - begin);
+            ordered_cells.reserve(end - begin);
+            for (uint32_t i = begin; i < end; ++i)
+            {
+                const uint32_t hfi = edge_halffaces[i];
+                if (hfi >= halffaces_.size())
+                {
+                    return false;
+                }
+                const HalfFace &hf = halffaces_[hfi];
+                const Face &face = faces_[hf.face];
+                if (face.hf0 != hfi && face.hf1 != hfi)
+                {
+                    return false; // More than two half-faces share this face.
+                }
+                uint32_t successor = invalid_id;
+                if (hf.opposite != invalid_id)
+                {
+                    const HalfFace &opposite = halffaces_[hf.opposite];
+                    if (opposite.opposite != hfi || opposite.face != hf.face || opposite.cell == hf.cell)
+                    {
+                        return false;
+                    }
+                    bool reversed_edge = false;
+                    for (uint32_t j = 0; j < opposite.vertex_count; ++j)
+                    {
+                        reversed_edge |= opposite.v[j] == edge.v1 &&
+                                         opposite.v[(j + 1) % opposite.vertex_count] == edge.v0;
+                    }
+                    if (!reversed_edge)
+                    {
+                        return false; // Incompatible orientation on a shared face.
+                    }
+                    successor = opposite.cell;
+                }
+                // References are appended in cell order before grouping by edge.
+                if (!links.empty() && links.back().cell >= hf.cell)
+                {
+                    return false;
+                }
+                links.push_back({hf.cell, successor});
+            }
+            if (links.empty())
+            {
+                return false;
+            }
+
+            size_t ends = 0;
+            for (CellLink &link : links)
+            {
+                if (link.successor == invalid_id)
+                {
+                    ++ends;
+                    continue;
+                }
+                auto next = std::lower_bound(links.begin(), links.end(), link.successor,
+                                            [](const CellLink &a, uint32_t cell) { return a.cell < cell; });
+                if (next == links.end() || next->cell != link.successor || next->has_predecessor)
+                {
+                    return false;
+                }
+                next->has_predecessor = true;
+                link.next = static_cast<uint32_t>(next - links.begin());
+            }
+
+            size_t starts = 0;
+            uint32_t start = 0;
+            for (uint32_t i = 0; i < links.size(); ++i)
+            {
+                if (!links[i].has_predecessor)
+                {
+                    start = i;
+                    ++starts;
+                }
+            }
+            closed = starts == 0 && ends == 0;
+            if (!closed && (starts != 1 || ends != 1))
+            {
+                return false;
+            }
+            // A ring starts at the smallest cell id; a chain at its unique root.
+            uint32_t current = start;
+            for (size_t i = 0; i < links.size(); ++i)
+            {
+                if (current == invalid_id || links[current].visited)
+                {
+                    return false;
+                }
+                CellLink &link = links[current];
+                link.visited = true;
+                ordered_cells.push_back(link.cell);
+                current = link.next;
+            }
+            return closed ? current == start : current == invalid_id;
+        };
+
+        // Keep the existing CSR query layout. Each physical edge creates its two
+        // directed ids consecutively; generate the reverse order without walking
+        // the star a second time. Invalid local stars get two empty CSR ranges.
+        dedge_cell_offsets_.assign(dedges_.size() + 1, 0);
+        dedge_cells_.reserve(edge_cell_refs.size() * 2);
+        for (const Edge &edge : edges_)
         {
-            const uint32_t edge_cell_begin = edge_cell_offsets[dedge.edge];
-            const uint32_t edge_cell_end = edge_cell_offsets[dedge.edge + 1];
-            const Vector3 start = vertices_[dedge.start].point;
-            const Vector3 end = vertices_[dedge.end].point;
-            const Vector3 axis = start - end;
-            const Vector3 mid = (start + end) * 0.5;
-            const auto basis = axis.buildTangentBasis();
-
-            sorted_cells.clear();
-            sorted_cells.reserve(edge_cell_end - edge_cell_begin);
-            for (uint32_t i = edge_cell_begin; i < edge_cell_end; ++i)
+            assert(edge.de1 == edge.de0 + 1);
+            dedge_cell_offsets_[edge.de0] = static_cast<uint32_t>(dedge_cells_.size());
+            bool closed = false;
+            const bool valid = order_edge(edge, closed);
+            if (valid)
             {
-                const uint32_t cell_id = edge_cells[i];
-                const Vector3 rel = cell_centroids[cell_id] - mid;
-                sorted_cells.push_back({std::atan2(dot(rel, basis[1]), dot(rel, basis[0])), cell_id});
+                dedge_cells_.insert(dedge_cells_.end(), ordered_cells.begin(), ordered_cells.end());
             }
+            dedge_cell_offsets_[edge.de1] = static_cast<uint32_t>(dedge_cells_.size());
 
-            std::sort(sorted_cells.begin(), sorted_cells.end(), [](const CellAngle &a, const CellAngle &b) {
-                return a.angle < b.angle;
-            });
-
-            uint32_t out = dedge_cell_offsets_[dedge.id];
-            for (const CellAngle &item : sorted_cells)
+            if (valid && closed)
             {
-                dedge_cells_[out++] = item.cell;
+                dedge_cells_.push_back(ordered_cells.front());
+                for (size_t i = ordered_cells.size(); i > 1; --i)
+                {
+                    dedge_cells_.push_back(ordered_cells[i - 1]);
+                }
             }
+            else if (valid)
+            {
+                dedge_cells_.insert(dedge_cells_.end(), ordered_cells.rbegin(), ordered_cells.rend());
+            }
+            dedge_cell_offsets_[edge.de1 + 1] = static_cast<uint32_t>(dedge_cells_.size());
         }
     }
 
@@ -394,6 +514,10 @@ namespace SolidMesh
 
     std::vector<uint32_t> Mesh::edge_cells_ccw(uint32_t dei) const
     {
+        if (dei >= dedges_.size())
+        {
+            return {};
+        }
         std::vector<uint32_t> result;
         const uint32_t begin = dedge_cell_offsets_[dei];
         const uint32_t end = dedge_cell_offsets_[dei + 1];

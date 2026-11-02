@@ -12,6 +12,7 @@ else()
 endif()
 
 option(SOLIDMESH_BUILD_EXAMPLE "Build the SolidMesh sample app." ${SOLIDMESH_TOP_LEVEL})
+option(SOLIDMESH_BUILD_TESTS "Build SolidMesh topology regression tests." OFF)
 
 set(SOLIDMESH_ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
 
@@ -43,4 +44,11 @@ target_include_directories(SolidMeshCore
 
 if(SOLIDMESH_BUILD_EXAMPLE)
     add_subdirectory(example)
+endif()
+
+if(SOLIDMESH_BUILD_TESTS)
+    enable_testing()
+    add_executable(solidmesh_ccw_tests tests/edge_cells_ccw_test.cpp)
+    target_link_libraries(solidmesh_ccw_tests PRIVATE SolidMesh::core)
+    add_test(NAME solidmesh_ccw_regression COMMAND solidmesh_ccw_tests)
 endif()
