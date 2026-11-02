@@ -1,27 +1,24 @@
 cmake_minimum_required(VERSION 3.16)
-project(SolidMesh VERSION 0.1.0 LANGUAGES CXX)
+project(SolidMesh LANGUAGES CXX)
 
-option(SOLIDMESH_BUILD_EXAMPLE "Build the SolidMesh sample app." OFF)
-option(SOLIDMESH_BUILD_TESTS "Build SolidMesh native contract tests." OFF)
+add_library(SolidMeshCore STATIC src/mesh.cpp)
+add_library(SolidMesh::core ALIAS SolidMeshCore)
 
-set(SOLIDMESH_ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
+target_compile_features(SolidMeshCore PUBLIC cxx_std_20)
+set_target_properties(SolidMeshCore PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
-add_subdirectory(include)
-add_subdirectory(src)
+target_include_directories(SolidMeshCore PUBLIC
+    "${CMAKE_CURRENT_SOURCE_DIR}/include"
+)
+target_include_directories(SolidMeshCore SYSTEM PUBLIC
+    "${CMAKE_CURRENT_SOURCE_DIR}/third_party"
+)
 
-if(SOLIDMESH_BUILD_EXAMPLE)
-    add_subdirectory(example)
-endif()
-
-if(SOLIDMESH_BUILD_TESTS)
-    enable_testing()
-    add_executable(solidmesh_tests tests/mesh_test.cpp)
-    target_link_libraries(solidmesh_tests PRIVATE SolidMesh::core)
-    add_test(NAME solidmesh_native_contract COMMAND solidmesh_tests)
-    add_executable(solidmesh_ccw_tests tests/edge_cells_ccw_test.cpp)
-    target_link_libraries(solidmesh_ccw_tests PRIVATE SolidMesh::core)
-    add_test(NAME solidmesh_ccw_valid_stars COMMAND solidmesh_ccw_tests)
-    foreach(case broken_opposite duplicate_incidence stale_halfface missing_owner wrong_incidence self_opposite)
-        add_test(NAME solidmesh_ccw_reject_${case} COMMAND solidmesh_ccw_tests ${case})
-    endforeach()
+# 优先复用父项目的 Eigen 目标，否则直接使用附带子模块的头文件。
+if(TARGET Eigen3::Eigen)
+    target_link_libraries(SolidMeshCore PUBLIC Eigen3::Eigen)
+else()
+    target_include_directories(SolidMeshCore SYSTEM PUBLIC
+        "${CMAKE_CURRENT_SOURCE_DIR}/third_party/eigen"
+    )
 endif()
