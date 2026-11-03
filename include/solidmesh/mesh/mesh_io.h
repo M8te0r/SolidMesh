@@ -2,6 +2,7 @@
 #include <cstdint>
 #include <string>
 #include <vector>
+#include <solidmesh/mesh/mesh.h>
 
 namespace SolidMesh
 {
@@ -28,6 +29,12 @@ namespace SolidMesh
         static bool read_vtk(const std::string &filename, VtkRawData &out_data);
 
         static bool write_vtk(const std::string &filename, const VtkRawData &data);
+
+    public:
+        static bool build_mesh(Mesh &mesh,
+                               const std::vector<std::vector<double>> &points,
+                               const std::vector<std::vector<uint32_t>> &cells,
+                               const std::vector<CellType> &celltypes);
     };
 
 } // namespace SolidMesh
