@@ -1,9 +1,6 @@
 #pragma once
 
-#include <array>
-#include <cstdint>
-#include <memory>
-#include <unordered_map>
+#include <cstddef>
 #include <vector>
 
 #include <solidmesh/mesh/mesh_element.h>
@@ -12,26 +9,28 @@ namespace SolidMesh
 {
     class Mesh
     {
-        using IndexType = uint32_t;
     public:
         Mesh() = default;
-        ~Mesh() = default;
+
+        // 输入采用 CellOrderTemplate 的局部编号，顶点和单元 ID 保持输入顺序。
+        // 默认输入为合法的共形流形网格；无法构建时抛出 std::runtime_error。
+        [[nodiscard]]
+        static Mesh from_data(const std::vector<Vector3> &vertices,
+                              const std::vector<std::vector<IndexType>> &cells,
+                              const std::vector<CellType> &celltypes);
 
     public:
-        // 构造拓扑
-        void build_topology(const std::vector<std::vector<double>> &points,
-                            const std::vector<std::vector<uint32_t>> &cells,
-                            const std::vector<CellType> &celltypes);
 
         // ---- 元素数量 -------------------------------------------------
-        size_t num_vertices() const noexcept;
-        size_t num_cells() const noexcept;
-        size_t num_faces() const noexcept;
-        size_t num_halffaces() const noexcept;
-        size_t num_edges() const noexcept;
-        size_t num_dedges() const noexcept;
+        std::size_t num_vertices() const noexcept;
+        std::size_t num_cells() const noexcept;
+        std::size_t num_faces() const noexcept;
+        std::size_t num_halffaces() const noexcept;
+        std::size_t num_edges() const noexcept;
+        std::size_t num_dedges() const noexcept;
 
         // ---- 查找 -------------------------------------------------
+        // idx 必须有效；调试构建使用断言检查。引用借用 Mesh 内部存储。
         const Vertex &vertex(IndexType idx) const noexcept;
         const DirectedEdge &dedge(IndexType idx) const noexcept;
         const Edge &edge(IndexType idx) const noexcept;
@@ -41,23 +40,21 @@ namespace SolidMesh
 
         // ---- topology queries ----------------------------------
 
-        // 顶点的1-ring顶点
+        // 以下邻接查询对无效 ID 返回空 vector。
+        // 以 vi 为起点的所有有向边，不承诺几何顺序。
+        std::vector<IndexType> vertex_dedges(IndexType vi) const;
+
+        // 通过网格边相连的顶点；去重、不含自身，不承诺几何顺序。
         std::vector<IndexType> vertex_vertices(IndexType vi) const;
 
         // 有向边的 1-ring cells：从终点望向起点时为 CCW（右手法则）。
-        std::vector<IndexType> edge_cells_ccw(IndexType dei) const;
+        // 内部边为不重复首项的闭环，以最小 cell ID 开始；边界边为完整开链。
+        // 反向 dedge 反转顺序，闭环保持最小 cell ID 为首项。
+        // 顺序在构建时按拓扑缓存，几何含义以正确的正向编号为前提。
+        std::vector<IndexType> dedge_cells_ccw(IndexType dei) const;
 
-        // 有向面上的顶点（严格 CCW 顺序）
-        std::vector<IndexType> halfface_vertices(IndexType hfi) const;
-
-        // Cell 邻接的周边 cells
+        // 共享面的相邻单元；去重、不含自身或边界占位项，不承诺几何顺序。
         std::vector<IndexType> cell_cells(IndexType ci) const;
-
-        // Cell上的所有定向面
-        std::vector<IndexType> cell_halffaces(IndexType ci) const;
-
-        // Cell 的vertices
-        std::vector<IndexType> cell_vertices(IndexType ci) const;
 
     private:
         // ---- 元素容器 ----------------------------------
@@ -69,9 +66,9 @@ namespace SolidMesh
         std::vector<DirectedEdge> dedges_;
 
         // ---- Compressed Sparse Row ----------------------------------
-        std::vector<IndexType> vertex_vertex_offsets_;
-        std::vector<IndexType> vertex_vertices_;
-        std::vector<IndexType> dedge_cell_offsets_;
-        std::vector<IndexType> dedge_cells_;
+        std::vector<IndexType> vertex_dedges_;              // 所有顶点的出向 dedge ID 展平
+        std::vector<std::size_t> vertex_dedge_offsets_{0};  // 顶点数 + 1 项，末项为邻接总长度
+        std::vector<IndexType> dedge_cells_;                // 所有定向边的1-ring cells[]展平
+        std::vector<std::size_t> dedge_cell_offsets_{0};    // 有向边数 + 1 项，末项为邻接总长度
     };
 }

@@ -5,16 +5,7 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
-    set(SOLIDMESH_TOP_LEVEL ON)
-else()
-    set(SOLIDMESH_TOP_LEVEL OFF)
-endif()
-
-option(SOLIDMESH_BUILD_EXAMPLE "Build the SolidMesh sample app." ${SOLIDMESH_TOP_LEVEL})
 option(SOLIDMESH_BUILD_TESTS "Build SolidMesh topology regression tests." OFF)
-
-set(SOLIDMESH_ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
 
 file(GLOB_RECURSE SOLIDMESH_HEADERS CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/include/*.h"
@@ -42,13 +33,10 @@ target_include_directories(SolidMeshCore
         $<INSTALL_INTERFACE:include>
 )
 
-if(SOLIDMESH_BUILD_EXAMPLE)
-    add_subdirectory(example)
-endif()
-
 if(SOLIDMESH_BUILD_TESTS)
     enable_testing()
-    add_executable(solidmesh_ccw_tests tests/edge_cells_ccw_test.cpp)
-    target_link_libraries(solidmesh_ccw_tests PRIVATE SolidMesh::core)
-    add_test(NAME solidmesh_ccw_regression COMMAND solidmesh_ccw_tests)
+    add_executable(solidmesh_tests tests/mesh_test.cpp)
+    target_link_libraries(solidmesh_tests PRIVATE SolidMesh::core)
+    add_test(NAME solidmesh_topology COMMAND solidmesh_tests)
+    add_test(NAME solidmesh_assets COMMAND solidmesh_tests "${CMAKE_CURRENT_SOURCE_DIR}/assets")
 endif()

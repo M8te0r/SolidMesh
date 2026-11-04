@@ -59,8 +59,6 @@ namespace SolidMesh
                 return 4; // VTK_TETRA
             case 12:
                 return 8; // VTK_HEXAHEDRON
-            case 13:
-                return 6; // VTK_WEDGE
             case 14:
                 return 5; // VTK_PYRAMID
             default:

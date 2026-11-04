@@ -1,4 +1,6 @@
 #pragma once
+#include <array>
+#include <cstdint>
 #include <limits>
 
 #include <solidmesh/math/vector3.h>
@@ -7,8 +9,8 @@
 namespace SolidMesh
 {
 
-    using ElementID = uint32_t;
-    static constexpr ElementID invalid_id = std::numeric_limits<ElementID>::max();
+    using IndexType = std::uint32_t;
+    static constexpr IndexType invalid_id = std::numeric_limits<IndexType>::max();
     
 
     struct Vertex;
@@ -25,39 +27,38 @@ namespace SolidMesh
 
     struct DirectedEdge
     {
-        std::array<ElementID, 2> vertices{};            // 起点、终点的vertex id
+        std::array<IndexType, 2> vertices{invalid_id, invalid_id}; // 起点、终点的vertex id
 
-        ElementID opposite = invalid_id;                // 反向的DirectEdge
-        ElementID edge = invalid_id;                    // 所属的Edge
+        IndexType opposite = invalid_id;                // 反向的DirectEdge
+        IndexType edge = invalid_id;                    // 所属的Edge
     };
 
     struct Edge
     {
-        ElementID de0 = invalid_id;
-        ElementID de1 = invalid_id; // DirectEdge的id
+        IndexType de0 = invalid_id;
+        IndexType de1 = invalid_id; // DirectEdge的id
     };
 
     struct HalfFace
     {
-        std::array<ElementID, 4> dedges = {};   // 有序的DirectedEdge环
+        std::array<IndexType, 4> dedges = {invalid_id, invalid_id, invalid_id, invalid_id};   // 有序的DirectedEdge环
 
-        ElementID opposite = invalid_id; // 反面halfface的id
+        IndexType opposite = invalid_id; // 反面halfface的id
 
-        ElementID face = invalid_id;    // 所属的face
-        ElementID cell = invalid_id;    // 所属的cell
-        int cell_local_face = -1;
+        IndexType face = invalid_id;    // 所属的face
+        IndexType cell = invalid_id;    // 所属的cell
     };
 
     struct Face
     {
-        FaceType type = FaceType::Invalid;
-        std::array<ElementID, 2> halffaces{}; // halfface的id
+        FaceType type = FaceType::UNSET;
+        std::array<IndexType, 2> halffaces{invalid_id, invalid_id}; // halfface的id
     };
 
     struct Cell
     {
-        CellType type = CellType::Invalid;
-        std::array<ElementID, 8> vertices {};
-        std::array<ElementID, 6> halffaces = {};
+        CellType type = CellType::UNSET;
+        std::array<IndexType, 8> vertices {invalid_id, invalid_id, invalid_id, invalid_id, invalid_id, invalid_id, invalid_id, invalid_id};
+        std::array<IndexType, 6> halffaces = {invalid_id, invalid_id, invalid_id, invalid_id, invalid_id, invalid_id};
     };
 }

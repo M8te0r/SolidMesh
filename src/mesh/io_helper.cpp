@@ -5,6 +5,7 @@
 #include <cstring>
 #include <cstdlib>
 #include <cstdio>
+#include <limits>
 #include <stdexcept>
 #include <string>
 
@@ -220,7 +221,8 @@ namespace SolidMesh
     bool FastAsciiWriter::write_double(double value)
     {
         char text[64];
-        const int count = std::snprintf(text, sizeof(text), "%.6g", value);
+        const int count = std::snprintf(text, sizeof(text), "%.*g",
+                                        std::numeric_limits<double>::max_digits10, value);
         return count > 0 && write_bytes(text, static_cast<std::size_t>(count));
     }
 
