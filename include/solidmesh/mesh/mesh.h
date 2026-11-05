@@ -12,8 +12,6 @@ namespace SolidMesh
     public:
         Mesh() = default;
 
-        // 输入采用 CellOrderTemplate 的局部编号，顶点和单元 ID 保持输入顺序。
-        // 默认输入为合法的共形流形网格；无法构建时抛出 std::runtime_error。
         [[nodiscard]]
         static Mesh from_data(const std::vector<Vector3> &vertices,
                               const std::vector<std::vector<IndexType>> &cells,

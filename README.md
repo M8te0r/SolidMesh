@@ -68,6 +68,20 @@ for (IndexType dei : outgoing)
   上层 `4,5,6,7` 为对应点加 `(0,0,1)`。
 - PYRAMID：底面 `0,1,2,3` 同 HEX，顶点 `4` 可取 `(.5,.5,1)`。
 
+`cell_type.h` 提供公共的 `CellSize` 和 `cell_size`：顶点数、无向边数和面数
+直接从 `CellOrderTemplate` 的面环推导，不再维护另一份手写计数。
+推导忽略负数填充项，对顶点和无向边去重，并包含面环的闭合边。
+内置类型的结果在编译期计算，运行时按类型查询只返回这些常量。
+
+```cpp
+constexpr auto tet = cell_size(CellOrderTemplate::tet_faces);
+static_assert(tet.vertex_count == 4 && tet.edge_count == 6 && tet.face_count == 4);
+const CellSize size = cell_size(mesh.cell(0).type);
+```
+
+面模板计数仅统计模板内容，不代替闭合性、流形性或方向验证。
+用于构造 Mesh 的模板仍要求局部顶点编号从零开始且连续。
+
 构建检查输入数组长度、单元类型、顶点数和索引范围，并在面配对或边邻域排序
 无法完成时抛出带说明的 `std::runtime_error`。分配失败正常传播标准库异常。
 不创建完整的网格验证流程；调用方负责输入的共形性、流形性和正确编号。

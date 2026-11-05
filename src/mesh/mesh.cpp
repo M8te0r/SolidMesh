@@ -2,298 +2,250 @@
 
 #include <algorithm>
 #include <cassert>
-#include <numeric>
+#include <span>
 #include <stdexcept>
-#include <string>
 #include <unordered_map>
 
 namespace SolidMesh
 {
     namespace
     {
-        struct CellSize
-        {
-            std::size_t vertices;
-            std::size_t faces;
-            std::size_t face_edges;
-        };
-
-        CellSize cell_size(CellType type)
-        {
-            switch (type)
-            {
-            case CellType::TET:     return {4, 4, 12};
-            case CellType::HEX:     return {8, 6, 24};
-            case CellType::PYRAMID: return {5, 5, 16};
-            default: throw std::runtime_error("Unsupported cell type");
-            }
-        }
-
-        IndexType next_id(std::size_t size)
-        {
-            if (size >= invalid_id)
-                throw std::runtime_error("Mesh exceeds the element ID capacity");
-            return static_cast<IndexType>(size);
-        }
-
-        using FaceKey = std::array<IndexType, 4>;
-
         struct FaceHash
         {
-            std::size_t operator()(const FaceKey& key) const noexcept
+            std::size_t operator()(const std::array<IndexType, 4> &vertices) const noexcept
             {
                 std::size_t hash = 0;
-                for (IndexType vi : key)
+                for (IndexType vi : vertices)
                     hash ^= std::size_t(vi) + 0x9e3779b9u + (hash << 6) + (hash >> 2);
                 return hash;
             }
         };
 
-        struct EdgeUse
+        // 保留键中两个端点的顺序；无向边的键由调用方排序。
+        struct EdgeHash
         {
-            IndexType edge;
-            // 本单元中使用该边 de0 的外向半面；跨过它就是 CCW 后继单元。
-            IndexType halfface;
+            std::size_t operator()(const std::array<IndexType, 2> &vertices) const noexcept
+            {
+                std::size_t hash = 0;
+                for (IndexType vi : vertices)
+                    hash ^= std::size_t(vi) + 0x9e3779b9u + (hash << 6) + (hash >> 2);
+                return hash;
+            }
         };
     }
 
-    Mesh Mesh::from_data(const std::vector<Vector3>& vertices,
-                         const std::vector<std::vector<IndexType>>& cells,
-                         const std::vector<CellType>& celltypes)
+    Mesh Mesh::from_data(const std::vector<Vector3> &vertices,
+                         const std::vector<std::vector<IndexType>> &cells,
+                         const std::vector<CellType> &celltypes)
     {
+        // =====================================================
+        // 0. 检查输入合法性
+        // =====================================================
         if (cells.size() != celltypes.size())
             throw std::runtime_error("Cell and cell type counts differ");
         if (vertices.size() > invalid_id || cells.size() > invalid_id)
             throw std::runtime_error("Mesh exceeds the element ID capacity");
 
+        // =====================================================
+        // 1. 根据输入，初始化顶点和单元
+        // =====================================================
         Mesh mesh;
         mesh.vertices_.reserve(vertices.size());
-        for (const Vector3& point : vertices)
+        mesh.cells_.resize(cells.size());
+
+        for (const Vector3 &point : vertices)
             mesh.vertices_.push_back(Vertex{point});
 
-        mesh.cells_.resize(cells.size());
-        std::size_t total_halffaces = 0;
-        std::size_t total_face_edges = 0;
         for (std::size_t ci = 0; ci < cells.size(); ++ci)
         {
-            const CellSize size = cell_size(celltypes[ci]);
-            if (cells[ci].size() != size.vertices)
-                throw std::runtime_error("Wrong vertex count in cell " + std::to_string(ci));
-            if (total_halffaces > invalid_id - size.faces)
-                throw std::runtime_error("Mesh exceeds the half-face ID capacity");
-            total_halffaces += size.faces;
-            total_face_edges += size.face_edges;
+            mesh.cells_[ci].type = celltypes[ci];
+            std::copy(cells[ci].begin(), cells[ci].end(), mesh.cells_[ci].vertices.begin());
+        }
 
-            Cell& cell = mesh.cells_[ci];
-            cell.type = celltypes[ci];
-            for (std::size_t i = 0; i < size.vertices; ++i)
+        // =====================================================
+        // 2. 构建边、有向边、面、半面
+        // =====================================================
+        mesh.halffaces_.reserve(cells.size() * 6);
+        mesh.faces_.reserve(cells.size() * 6);
+        mesh.dedges_.reserve(cells.size() * 12);
+        mesh.edges_.reserve(cells.size() * 12);
+
+        std::unordered_map<std::array<IndexType, 4>, IndexType, FaceHash> face_map;
+        std::unordered_map<std::array<IndexType, 2>, IndexType, EdgeHash> dedge_map;
+        std::unordered_map<std::array<IndexType, 2>, IndexType, EdgeHash> edge_map;
+
+        for (std::size_t ci = 0; ci < mesh.cells_.size(); ++ci)
+        {
+            Cell &cell = mesh.cells_[ci];
+            std::size_t face_count = CellTopology::cell_face_count(cell.type);
+
+            for (std::size_t fi = 0; fi < face_count; ++fi)
             {
-                if (cells[ci][i] >= vertices.size())
-                    throw std::runtime_error("Invalid vertex ID in cell " + std::to_string(ci));
-                cell.vertices[i] = cells[ci][i];
+                // 取出当前面的模板，将局部编号转换为有序的全局顶点 ID。
+                auto face_order = CellTopology::cell_face_order(cell.type, fi);
+                std::array<IndexType, 4> face_vertices{invalid_id, invalid_id, invalid_id, invalid_id};
+                std::size_t vertex_count = 0;
+                for (int local_vertex : face_order)
+                {
+                    if (local_vertex == -1)
+                        break; // PYRAMID 三角面的末尾填充项。
+                    face_vertices[vertex_count++] = cell.vertices[local_vertex];
+                }
+
+                // 排序副本作为 facekey，原顶点环保留方向。HalfFace 本身不去重。
+                auto face_key = face_vertices;
+                std::sort(face_key.begin(), face_key.end());
+                const auto [face_it, new_face] =
+                    face_map.try_emplace(face_key, static_cast<IndexType>(mesh.faces_.size()));
+                if (new_face)
+                    mesh.faces_.push_back(Face{vertex_count == 3 ? FaceType::TRIANGLE : FaceType::QUAD});
+
+                HalfFace halfface;
+                halfface.cell = static_cast<IndexType>(ci);
+                halfface.face = face_it->second;
+
+                // 沿原顶点环构造有向边，最后一条边从末顶点回到首顶点。
+                for (std::size_t i = 0; i < vertex_count; ++i)
+                {
+                    const IndexType source = face_vertices[i];
+                    const IndexType target = face_vertices[(i + 1) % vertex_count];
+                    const std::array<IndexType, 2> dedge_key{source, target};
+                    const auto [dedge_it, new_dedge] = dedge_map.try_emplace(dedge_key, static_cast<IndexType>(mesh.dedges_.size()));
+                    const IndexType dedge_id = dedge_it->second;
+
+                    if (new_dedge)
+                    {
+                        DirectedEdge dedge;
+                        dedge.vertices = dedge_key;
+
+                        // 有向键区分 source→target；无向键合并两个方向。
+                        const std::array<IndexType, 2> edge_key{std::min(source, target), std::max(source, target)};
+                        const auto [edge_it, new_edge] = edge_map.try_emplace(edge_key, static_cast<IndexType>(mesh.edges_.size()));
+                        if (new_edge)
+                            mesh.edges_.emplace_back();
+                        dedge.edge = edge_it->second;
+
+                        // de0 为小 ID→大 ID，de1 为反向；第二个方向出现时配对。
+                        Edge &edge = mesh.edges_[dedge.edge];
+                        if (source < target)
+                        {
+                            edge.de0 = dedge_id;
+                            dedge.opposite = edge.de1;
+                        }
+                        else
+                        {
+                            edge.de1 = dedge_id;
+                            dedge.opposite = edge.de0;
+                        }
+                        if (dedge.opposite != invalid_id)
+                            mesh.dedges_[dedge.opposite].opposite = dedge_id;
+                        mesh.dedges_.push_back(dedge);
+                    }
+                    halfface.dedges[i] = dedge_id;
+                }
+
+                // 将半面登记到单元和面；共享同一 Face 的两个半面互为 opposite。
+                const IndexType halfface_id = static_cast<IndexType>(mesh.halffaces_.size());
+                Face &face = mesh.faces_[halfface.face];
+                if (face.halffaces[0] == invalid_id)
+                    face.halffaces[0] = halfface_id;
+                else
+                {
+                    halfface.opposite = face.halffaces[0];
+                    mesh.halffaces_[halfface.opposite].opposite = halfface_id;
+                    face.halffaces[1] = halfface_id;
+                }
+                cell.halffaces[fi] = halfface_id;
+                mesh.halffaces_.push_back(halfface);
             }
         }
 
-        mesh.halffaces_.reserve(total_halffaces);
-        mesh.faces_.reserve(total_halffaces);
-        mesh.edges_.reserve(total_face_edges / 2);
-        mesh.dedges_.reserve(total_face_edges);
-        std::vector<EdgeUse> edge_uses;
-        edge_uses.reserve(total_face_edges / 2);
+        // =====================================================
+        // 3. 构建vertex-dedge和dedge-cell的CSR索引
+        // =====================================================
+        // 3.1 vertex-dedge：按起点计数，累加为行边界，再填入有向边 ID。
+        mesh.vertex_dedge_offsets_.assign(mesh.vertices_.size() + 1, 0);
+        for (const DirectedEdge &dedge : mesh.dedges_)
+            ++mesh.vertex_dedge_offsets_[std::size_t(dedge.vertices[0]) + 1];
+        for (std::size_t i = 1; i < mesh.vertex_dedge_offsets_.size(); ++i)
+            mesh.vertex_dedge_offsets_[i] += mesh.vertex_dedge_offsets_[i - 1];
 
-        // 哈希表只在构建元素时使用，不作为 Mesh 的持久存储。
+        mesh.vertex_dedges_.resize(mesh.vertex_dedge_offsets_.back());
         {
-            std::unordered_map<std::uint64_t, IndexType> edge_map;
-            std::unordered_map<FaceKey, IndexType, FaceHash> face_map;
-            edge_map.reserve(total_face_edges / 2);
-            face_map.reserve(total_halffaces);
-
-            auto ensure_dedge = [&](IndexType source, IndexType target) {
-                const IndexType lo = std::min(source, target);
-                const IndexType hi = std::max(source, target);
-                const std::uint64_t key = (std::uint64_t(lo) << 32) | hi;
-                auto found = edge_map.find(key);
-                if (found == edge_map.end())
-                {
-                    const IndexType ei = next_id(mesh.edges_.size());
-                    const IndexType de0 = next_id(mesh.dedges_.size());
-                    const IndexType de1 = next_id(mesh.dedges_.size() + 1);
-                    mesh.edges_.push_back(Edge{de0, de1});
-                    mesh.dedges_.push_back(DirectedEdge{{lo, hi}, de1, ei});
-                    mesh.dedges_.push_back(DirectedEdge{{hi, lo}, de0, ei});
-                    found = edge_map.emplace(key, ei).first;
-                }
-                const Edge& edge = mesh.edges_[found->second];
-                return source == lo ? edge.de0 : edge.de1;
-            };
-
-            for (std::size_t ci = 0; ci < mesh.cells_.size(); ++ci)
+            // 写入游标使用副本，保留 offsets 中的行边界。
+            auto write_positions = mesh.vertex_dedge_offsets_;
+            for (std::size_t di = 0; di < mesh.dedges_.size(); ++di)
             {
-                Cell& cell = mesh.cells_[ci];
-                std::size_t local_face = 0;
-                auto add_halfface = [&](const auto& order) {
-                    const IndexType hfi = next_id(mesh.halffaces_.size());
-                    HalfFace hf;
-                    hf.cell = static_cast<IndexType>(ci);
-                    FaceKey ring{invalid_id, invalid_id, invalid_id, invalid_id};
-                    std::size_t count = 0;
-                    for (int local_vertex : order)
-                        if (local_vertex >= 0)
-                            ring[count++] = cell.vertices[local_vertex];
-
-                    for (std::size_t j = 0; j < count; ++j)
-                    {
-                        const IndexType dei = ensure_dedge(ring[j], ring[(j + 1) % count]);
-                        hf.dedges[j] = dei;
-                        const IndexType ei = mesh.dedges_[dei].edge;
-                        // 闭合单元模板中，每条物理边恰有一个面使用 de0。
-                        if (dei == mesh.edges_[ei].de0)
-                            edge_uses.push_back({ei, hfi});
-                    }
-
-                    FaceKey key = ring;
-                    std::sort(key.begin(), key.begin() + count);
-                    const auto found = face_map.find(key);
-                    if (found == face_map.end())
-                    {
-                        hf.face = next_id(mesh.faces_.size());
-                        mesh.faces_.push_back(Face{count == 3 ? FaceType::TRIANGLE : FaceType::QUAD,
-                                                   {hfi, invalid_id}});
-                        face_map.emplace(key, hf.face);
-                    }
-                    else
-                    {
-                        hf.face = found->second;
-                        Face& face = mesh.faces_[hf.face];
-                        if (face.halffaces[1] != invalid_id)
-                            throw std::runtime_error("More than two cells share face " + std::to_string(hf.face));
-
-                        HalfFace& other = mesh.halffaces_[face.halffaces[0]];
-                        const IndexType reverse_first = mesh.dedges_[hf.dedges[0]].opposite;
-                        const auto begin = other.dedges.begin();
-                        const auto match = std::find(begin, begin + count, reverse_first);
-                        if (match == begin + count)
-                            throw std::runtime_error("Incompatible orientation at face " + std::to_string(hf.face));
-                        const std::size_t start = static_cast<std::size_t>(match - begin);
-                        for (std::size_t j = 0; j < count; ++j)
-                            if (other.dedges[(start + count - j) % count] != mesh.dedges_[hf.dedges[j]].opposite)
-                                throw std::runtime_error("Incompatible face loop at face " + std::to_string(hf.face));
-
-                        hf.opposite = face.halffaces[0];
-                        other.opposite = hfi;
-                        face.halffaces[1] = hfi;
-                    }
-                    cell.halffaces[local_face++] = hfi;
-                    mesh.halffaces_.push_back(hf);
-                };
-
-                switch (cell.type)
-                {
-                case CellType::TET:
-                    for (const auto& face : CellOrderTemplate::tet_faces) add_halfface(face);
-                    break;
-                case CellType::HEX:
-                    for (const auto& face : CellOrderTemplate::hex_faces) add_halfface(face);
-                    break;
-                case CellType::PYRAMID:
-                    for (const auto& face : CellOrderTemplate::pyramid_faces) add_halfface(face);
-                    break;
-                default: break; // 已由 cell_size 检查。
-                }
+                const IndexType source = mesh.dedges_[di].vertices[0];
+                mesh.vertex_dedges_[write_positions[source]++] = static_cast<IndexType>(di);
             }
         }
 
-        // 顶点 -> 出向有向边 CSR：计数、前缀和、填充。
-        mesh.vertex_dedge_offsets_.assign(vertices.size() + 1, 0);
-        for (const DirectedEdge& de : mesh.dedges_)
-            ++mesh.vertex_dedge_offsets_[std::size_t(de.vertices[0]) + 1];
-        std::partial_sum(mesh.vertex_dedge_offsets_.begin(), mesh.vertex_dedge_offsets_.end(),
-                         mesh.vertex_dedge_offsets_.begin());
-        mesh.vertex_dedges_.resize(mesh.dedges_.size());
-        {
-            auto cursor = mesh.vertex_dedge_offsets_;
-            for (std::size_t dei = 0; dei < mesh.dedges_.size(); ++dei)
-                mesh.vertex_dedges_[cursor[mesh.dedges_[dei].vertices[0]]++] = static_cast<IndexType>(dei);
-        }
-
-        // 将临时的单元-边关联按物理边分组；组内仍保持递增 cell ID。
-        std::vector<std::size_t> edge_offsets(mesh.edges_.size() + 1, 0);
-        for (const EdgeUse& use : edge_uses)
-            ++edge_offsets[std::size_t(use.edge) + 1];
-        std::partial_sum(edge_offsets.begin(), edge_offsets.end(), edge_offsets.begin());
-        std::vector<IndexType> edge_halffaces(edge_uses.size());
-        {
-            auto cursor = edge_offsets;
-            for (const EdgeUse& use : edge_uses)
-                edge_halffaces[cursor[use.edge]++] = use.halfface;
-        }
-
-        struct Link
-        {
-            IndexType cell;
-            std::size_t next;
-            bool has_predecessor = false;
-            bool visited = false;
-        };
-        std::vector<Link> links;
-        std::vector<IndexType> ordered;
+        // 3.2 dedge-cell：统计每行长度，同时确定沿 CCW 遍历的起始单元。
+        // 合法单元的两个相邻半面使用相反方向的边，因此同一 dedge 每个单元只计一次。
         mesh.dedge_cell_offsets_.assign(mesh.dedges_.size() + 1, 0);
-        mesh.dedge_cells_.reserve(edge_uses.size() * 2);
-        for (std::size_t ei = 0; ei < mesh.edges_.size(); ++ei)
+        std::vector<IndexType> start_cells(mesh.dedges_.size(), invalid_id);
+        for (const HalfFace &halfface : mesh.halffaces_)
         {
-            const std::size_t begin = edge_offsets[ei];
-            const std::size_t count = edge_offsets[ei + 1] - begin;
-            links.clear();
-            ordered.clear();
-            for (std::size_t i = 0; i < count; ++i)
-                links.push_back({mesh.halffaces_[edge_halffaces[begin + i]].cell, count});
-
-            auto fail = [ei]() {
-                throw std::runtime_error("Cannot order cells around edge " + std::to_string(ei));
-            };
-            for (std::size_t i = 0; i < count; ++i)
+            for (IndexType di : halfface.dedges)
             {
-                const IndexType opposite = mesh.halffaces_[edge_halffaces[begin + i]].opposite;
-                if (opposite == invalid_id) continue;
-                const IndexType next_cell = mesh.halffaces_[opposite].cell;
-                const auto next = std::lower_bound(links.begin(), links.end(), next_cell,
-                    [](const Link& link, IndexType ci) { return link.cell < ci; });
-                if (next == links.end() || next->cell != next_cell || next->has_predecessor) fail();
-                next->has_predecessor = true;
-                links[i].next = static_cast<std::size_t>(next - links.begin());
+                if (di == invalid_id)
+                    break;
+                ++mesh.dedge_cell_offsets_[std::size_t(di) + 1];
+
+                // 包含 di 的半面，是沿反向边 CCW 遍历时的入口。
+                // 第 2 步按 cell ID 递增创建半面，首次遇到的单元即最小 ID；边界入口优先。
+                const IndexType reverse_di = mesh.dedges_[di].opposite;
+                if (start_cells[reverse_di] == invalid_id || halfface.opposite == invalid_id)
+                    start_cells[reverse_di] = halfface.cell;
+            }
+        }
+        for (std::size_t i = 1; i < mesh.dedge_cell_offsets_.size(); ++i)
+            mesh.dedge_cell_offsets_[i] += mesh.dedge_cell_offsets_[i - 1];
+
+        mesh.dedge_cells_.resize(mesh.dedge_cell_offsets_.back());
+
+        // 3.3 沿半面连接直接填入有序单元。每条 Edge 只遍历 de0，de1 由反向序列得到。
+        for (const Edge &edge : mesh.edges_)
+        {
+            const std::size_t begin = mesh.dedge_cell_offsets_[edge.de0];
+            const std::size_t end = mesh.dedge_cell_offsets_[std::size_t(edge.de0) + 1];
+            const IndexType start_cell = start_cells[edge.de0];
+
+            // 跨过当前单元中包含 de0 的半面，即沿约定的 CCW 方向进入下一个单元。
+            IndexType current_cell = start_cell;
+            for (std::size_t i = begin; i < end; ++i)
+            {
+                mesh.dedge_cells_[i] = current_cell;
+                for (IndexType hfi : mesh.cells_[current_cell].halffaces)
+                {
+                    if (hfi == invalid_id)
+                        break;
+                    const HalfFace &halfface = mesh.halffaces_[hfi];
+                    if (std::find(halfface.dedges.begin(), halfface.dedges.end(), edge.de0) == halfface.dedges.end())
+                        continue;
+                    current_cell = halfface.opposite == invalid_id
+                        ? invalid_id : mesh.halffaces_[halfface.opposite].cell;
+                    break;
+                }
             }
 
-            std::size_t start = 0;
-            std::size_t roots = 0;
-            for (std::size_t i = 0; i < count; ++i)
-                if (!links[i].has_predecessor) { start = i; ++roots; }
-            if (count == 0 || roots > 1) fail();
-            const bool closed = roots == 0;
-
-            // 闭环从最小 cell ID 开始；开链从唯一无前驱的单元开始。
-            std::size_t current = start;
-            for (std::size_t i = 0; i < count; ++i)
+            const std::size_t reverse_begin = mesh.dedge_cell_offsets_[edge.de1];
+            // 开链在边界终止，闭环走完后回到起点。
+            if (current_cell == invalid_id)
             {
-                if (current == count || links[current].visited) fail();
-                links[current].visited = true;
-                ordered.push_back(links[current].cell);
-                current = links[current].next;
-            }
-            if (current != (closed ? start : count)) fail();
-
-            const Edge& edge = mesh.edges_[ei];
-            mesh.dedge_cell_offsets_[edge.de0] = mesh.dedge_cells_.size();
-            mesh.dedge_cells_.insert(mesh.dedge_cells_.end(), ordered.begin(), ordered.end());
-            mesh.dedge_cell_offsets_[edge.de1] = mesh.dedge_cells_.size();
-            if (closed)
-            {
-                mesh.dedge_cells_.push_back(ordered.front());
-                mesh.dedge_cells_.insert(mesh.dedge_cells_.end(), ordered.rbegin(), ordered.rend() - 1);
+                std::reverse_copy(mesh.dedge_cells_.begin() + begin, mesh.dedge_cells_.begin() + end,
+                                  mesh.dedge_cells_.begin() + reverse_begin);
             }
             else
-                mesh.dedge_cells_.insert(mesh.dedge_cells_.end(), ordered.rbegin(), ordered.rend());
-            mesh.dedge_cell_offsets_[std::size_t(edge.de1) + 1] = mesh.dedge_cells_.size();
+            {
+                // 反向闭环仍保留最小 cell ID 为首项，只反转其余部分。
+                mesh.dedge_cells_[reverse_begin] = start_cell;
+                std::reverse_copy(mesh.dedge_cells_.begin() + begin + 1, mesh.dedge_cells_.begin() + end,
+                                  mesh.dedge_cells_.begin() + reverse_begin + 1);
+            }
         }
+
         return mesh;
     }
 
@@ -304,37 +256,37 @@ namespace SolidMesh
     std::size_t Mesh::num_edges() const noexcept { return edges_.size(); }
     std::size_t Mesh::num_dedges() const noexcept { return dedges_.size(); }
 
-    const Vertex& Mesh::vertex(IndexType idx) const noexcept
+    const Vertex &Mesh::vertex(IndexType idx) const noexcept
     {
         assert(idx < vertices_.size());
         return vertices_[idx];
     }
 
-    const DirectedEdge& Mesh::dedge(IndexType idx) const noexcept
+    const DirectedEdge &Mesh::dedge(IndexType idx) const noexcept
     {
         assert(idx < dedges_.size());
         return dedges_[idx];
     }
 
-    const Edge& Mesh::edge(IndexType idx) const noexcept
+    const Edge &Mesh::edge(IndexType idx) const noexcept
     {
         assert(idx < edges_.size());
         return edges_[idx];
     }
 
-    const HalfFace& Mesh::halfface(IndexType idx) const noexcept
+    const HalfFace &Mesh::halfface(IndexType idx) const noexcept
     {
         assert(idx < halffaces_.size());
         return halffaces_[idx];
     }
 
-    const Face& Mesh::face(IndexType idx) const noexcept
+    const Face &Mesh::face(IndexType idx) const noexcept
     {
         assert(idx < faces_.size());
         return faces_[idx];
     }
 
-    const Cell& Mesh::cell(IndexType idx) const noexcept
+    const Cell &Mesh::cell(IndexType idx) const noexcept
     {
         assert(idx < cells_.size());
         return cells_[idx];
@@ -342,14 +294,16 @@ namespace SolidMesh
 
     std::vector<IndexType> Mesh::vertex_dedges(IndexType vi) const
     {
-        if (vi >= vertices_.size()) return {};
+        if (vi >= vertices_.size())
+            return {};
         return {vertex_dedges_.begin() + vertex_dedge_offsets_[vi],
                 vertex_dedges_.begin() + vertex_dedge_offsets_[std::size_t(vi) + 1]};
     }
 
     std::vector<IndexType> Mesh::vertex_vertices(IndexType vi) const
     {
-        if (vi >= vertices_.size()) return {};
+        if (vi >= vertices_.size())
+            return {};
         const std::size_t begin = vertex_dedge_offsets_[vi];
         const std::size_t end = vertex_dedge_offsets_[std::size_t(vi) + 1];
         std::vector<IndexType> result;
@@ -361,21 +315,25 @@ namespace SolidMesh
 
     std::vector<IndexType> Mesh::dedge_cells_ccw(IndexType dei) const
     {
-        if (dei >= dedges_.size()) return {};
+        if (dei >= dedges_.size())
+            return {};
         return {dedge_cells_.begin() + dedge_cell_offsets_[dei],
                 dedge_cells_.begin() + dedge_cell_offsets_[std::size_t(dei) + 1]};
     }
 
     std::vector<IndexType> Mesh::cell_cells(IndexType ci) const
     {
-        if (ci >= cells_.size()) return {};
+        if (ci >= cells_.size())
+            return {};
         std::vector<IndexType> result;
         result.reserve(6);
         for (IndexType hfi : cells_[ci].halffaces)
         {
-            if (hfi == invalid_id) break;
+            if (hfi == invalid_id)
+                break;
             const IndexType opposite = halffaces_[hfi].opposite;
-            if (opposite == invalid_id) continue;
+            if (opposite == invalid_id)
+                continue;
             const IndexType neighbor = halffaces_[opposite].cell;
             if (neighbor != ci && std::find(result.begin(), result.end(), neighbor) == result.end())
                 result.push_back(neighbor);
