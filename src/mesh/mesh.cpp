@@ -82,15 +82,12 @@ namespace SolidMesh
             for (std::size_t fi = 0; fi < face_count; ++fi)
             {
                 // 取出当前面的模板，将局部编号转换为有序的全局顶点 ID。
-                auto face_order = CellTopology::cell_face_order(cell.type, fi);
+                const auto face_order = CellTopology::cell_face_order(cell.type, fi);
+                const std::size_t vertex_count = face_order.size();
+
                 std::array<IndexType, 4> face_vertices{invalid_id, invalid_id, invalid_id, invalid_id};
-                std::size_t vertex_count = 0;
-                for (int local_vertex : face_order)
-                {
-                    if (local_vertex == -1)
-                        break; // PYRAMID 三角面的末尾填充项。
-                    face_vertices[vertex_count++] = cell.vertices[local_vertex];
-                }
+                for (std::size_t i = 0; i < vertex_count; ++i)
+                    face_vertices[i] = cell.vertices[face_order[i]];
 
                 // 排序副本作为 facekey，原顶点环保留方向。HalfFace 本身不去重。
                 auto face_key = face_vertices;
@@ -98,7 +95,7 @@ namespace SolidMesh
                 const auto [face_it, new_face] =
                     face_map.try_emplace(face_key, static_cast<IndexType>(mesh.faces_.size()));
                 if (new_face)
-                    mesh.faces_.push_back(Face{vertex_count == 3 ? FaceType::TRIANGLE : FaceType::QUAD});
+                    mesh.faces_.push_back(Face{CellTopology::cell_face_type(cell.type, fi)});
 
                 HalfFace halfface;
                 halfface.cell = static_cast<IndexType>(ci);
