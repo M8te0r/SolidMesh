@@ -131,9 +131,9 @@ namespace SolidMesh
 
         inline double Quaternion::norm2() const { return w * w + x * x + y * y + z * z; }
 
-        inline double dot(const Quaternion &p, const Quaternion &q)
+        inline double Quaternion::dot(const Quaternion &q) const
         {
-            return p.w * q.w + p.x * q.x + p.y * q.y + p.z * q.z;
+            return w * q.w + x * q.x + y * q.y + z * q.z;
         }
 
         inline Quaternion Quaternion::conjugate() const { return Quaternion{w, -x, -y, -z}; }
@@ -220,8 +220,8 @@ namespace SolidMesh
             const Quaternion q = normalize();
             const Vector3 qv{q.x, q.y, q.z};
             const Vector3 p{v[0], v[1], v[2]};
-            const Vector3 t = 2.0 * cross(qv, p);
-            const Vector3 r = p + q.w * t + cross(qv, t);
+            const Vector3 t = 2.0 * qv.cross(p);
+            const Vector3 r = p + q.w * t + qv.cross(t);
             out[0] = r.x;
             out[1] = r.y;
             out[2] = r.z;

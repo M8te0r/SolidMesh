@@ -55,9 +55,9 @@ namespace SolidMesh
         ShRep Ey();
         ShRep Ez();
 
-        double operator*(const ShRep &other);
+        double dot(const ShRep &other) const;
 
-        double norm();
+        double norm() const;
 
         void normalize();
 

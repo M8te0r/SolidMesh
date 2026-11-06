@@ -49,6 +49,10 @@ namespace SolidMesh
         bool operator!=(const Vector3 &v) const;
         const Vector3 operator-() const;
 
+        double dot(const Vector3 &another) const;
+        Vector3 cross(const Vector3 &another) const;
+        double sum() const;
+
         // Other functions
         Vector3 rotateAround(Vector3 axis, double theta) const;
         Vector3 removeComponent(const Vector3 &unitDir) const; // removes component in direction D
@@ -72,20 +76,8 @@ namespace SolidMesh
     ::std::ostream &operator<<(::std::ostream &output, const Vector3 &v);
     ::std::istream &operator>>(::std::istream &intput, Vector3 &v);
 
-    double norm(const Vector3 &v);
-    double norm2(const Vector3 &v);
-
-    Vector3 normalize(const Vector3 &v);
-    Vector3 normalizeCutoff(const Vector3 &v, double mag = 0.);
-    Vector3 unit(const Vector3 &v);
-
-    Vector3 cross(const Vector3 &u, const Vector3 &v);
     double angle(const Vector3 &u, const Vector3 &v);
     double angleInPlane(const Vector3 &u, const Vector3 &v, const Vector3 &normal);
-    double dot(const Vector3 &u, const Vector3 &v);
-    double sum(const Vector3 &u);
-    bool isfinite(const Vector3 &u); // break camel case rule to match std
-    bool isDefined(const Vector3 &u);
     Vector3 clamp(const Vector3 &val, const Vector3 &low, const Vector3 &high);
     Vector3 componentwiseMin(const Vector3 &u, const Vector3 &v);
     Vector3 componentwiseMax(const Vector3 &u, const Vector3 &v);

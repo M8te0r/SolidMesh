@@ -143,7 +143,7 @@ namespace SolidMesh
                      -4 * coeff[0]);
     }
 
-    inline double ShRep::operator*(const ShRep &other)
+    inline double ShRep::dot(const ShRep &other) const
     {
         double res = 0;
         for (int d = 0; d < 9; d++)
@@ -151,9 +151,9 @@ namespace SolidMesh
         return res;
     }
 
-    inline double ShRep::norm()
+    inline double ShRep::norm() const
     {
-        return sqrt((*this) * (*this));
+        return sqrt(dot(*this));
     }
 
     inline void ShRep::normalize()
@@ -188,7 +188,7 @@ namespace SolidMesh
         // 从5个初始旋转中选一个与query最接近的作为迭代起点（最大化内积等价于最小化L2距离）
         for (int i = 0; i < 5; i++)
         {
-            double tdot = init_harmonics[i] * query;
+            double tdot = init_harmonics[i].dot(query);
             if (tdot > dot)
             {
                 dot = tdot;
@@ -202,7 +202,7 @@ namespace SolidMesh
         // 
         while (cnt < 10000)
         {
-            Vector3 grad{query * v.Ex(), query * v.Ey(), query * v.Ez()};   // 论文中能量的梯度，三个分量是欧拉角
+            Vector3 grad{query.dot(v.Ex()), query.dot(v.Ey()), query.dot(v.Ez())};   // 论文中能量的梯度，三个分量是欧拉角
             if (grad.norm() < grad_threshold)
                 break;
             grad = (1. / 8.) * grad; // empirically found constant
@@ -213,7 +213,7 @@ namespace SolidMesh
             W = Quaternion{grad[1], 0, 1, 0} * (*W);
             W = Quaternion{grad[2], 0, 0, 1} * (*W);
             cnt++;
-            dot = v * query;
+            dot = v.dot(query);
             if (dot - olddot < dot_threshold)
                 break;
             olddot = dot;

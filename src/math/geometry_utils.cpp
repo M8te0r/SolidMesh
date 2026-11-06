@@ -10,7 +10,7 @@ namespace SolidMesh
         auto ab = b - a;
         auto ac = c - a;
         auto ad = d - a;
-        return dot(ab, cross(ac, ad));
+        return ab.dot(ac.cross(ad));
     };
 
     bool is_point_inside_triangle(const Vector3 &p, const Vector3 &a, const Vector3 &b, const Vector3 &c)
@@ -19,11 +19,11 @@ namespace SolidMesh
         Vector3 v1 = b - a;
         Vector3 v2 = p - a;
 
-        double dot00 = dot(v0, v0);
-        double dot01 = dot(v0, v1);
-        double dot02 = dot(v0, v2);
-        double dot11 = dot(v1, v1);
-        double dot12 = dot(v1, v2);
+        double dot00 = v0.dot(v0);
+        double dot01 = v0.dot(v1);
+        double dot02 = v0.dot(v2);
+        double dot11 = v1.dot(v1);
+        double dot12 = v1.dot(v2);
 
         double invDenom = 1.0 / (dot00 * dot11 - dot01 * dot01);
         double u = (dot11 * dot02 - dot01 * dot12) * invDenom;
@@ -49,7 +49,7 @@ namespace SolidMesh
         // t = (q - p) x s / (r x s)
 
         // (r x s) ~ 0 --> directions are parallel, they will never cross
-        auto rxs = cross(r, s);
+        auto rxs = r.cross(s);
         if (rxs.norm() <= eps)
             return false;
 
@@ -57,15 +57,15 @@ namespace SolidMesh
 
         double u;
         // u = (q − p) × r / (r × s)
-        auto u1 = cross(q - p, r);
-        sign = dot(u1, rxs) > 0 ? 1 : -1;
+        auto u1 = (q - p).cross(r);
+        sign = u1.dot(rxs) > 0 ? 1 : -1;
         u = u1.norm() / rxs.norm();
         u = u * sign;
 
         double t;
         // t = (q - p) x s / (r x s)
-        auto t1 = cross(q - p, s);
-        sign = dot(t1, rxs) > 0 ? 1 : -1;
+        auto t1 = (q - p).cross(s);
+        sign = t1.dot(rxs) > 0 ? 1 : -1;
         t = t1.norm() / rxs.norm();
         t = t * sign;
 
@@ -91,24 +91,24 @@ namespace SolidMesh
         // Moller-Trumbore intersection algorithm
         auto e1 = v1 - v0;
         auto e2 = v2 - v0;
-        auto pvec = cross(ray_dir, e2);
-        double det = dot(e1, pvec);
+        auto pvec = ray_dir.cross(e2);
+        double det = e1.dot(pvec);
 
         if (std::abs(det) < tolerance)
             return -1.0; // No intersection or ray is parallel to triangle
 
         double inv_det = 1.0 / det;
         auto tvec = ray_origin - v0;
-        double u = dot(tvec, pvec) * inv_det;
+        double u = tvec.dot(pvec) * inv_det;
         if (u < 0.0 || u > 1.0)
             return -1.0; // Intersection outside triangle
 
-        auto qvec = cross(tvec, e1);
-        double v = dot(ray_dir, qvec) * inv_det;
+        auto qvec = tvec.cross(e1);
+        double v = ray_dir.dot(qvec) * inv_det;
         if (v < 0.0 || u + v > 1.0)
             return -1.0; // Intersection outside triangle
 
-        double t = dot(e2, qvec) * inv_det;
+        double t = e2.dot(qvec) * inv_det;
         return t >= 0.0 ? t : -1.0; // Return distance along ray or -1 if behind ray
     }
 

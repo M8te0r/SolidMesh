@@ -61,6 +61,7 @@ namespace SolidMesh
             Quaternion normalizeCutoff(double mag = 0.) const;
             Quaternion unit() const;
 
+            double dot(const Quaternion &q) const;
             double norm() const;
             double norm2() const;
 
@@ -80,8 +81,6 @@ namespace SolidMesh
 
         ::std::ostream &operator<<(::std::ostream &output, const Quaternion &q);
         ::std::istream &operator>>(::std::istream &input, Quaternion &q);
-
-        double dot(const Quaternion &p, const Quaternion &q);
 
 } // namespace SolidMesh
 
