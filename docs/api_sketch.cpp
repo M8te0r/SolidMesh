@@ -1,5 +1,6 @@
+#include <array>
 #include <iostream>
-#include <DynamicSolidMesh/mesh.h>
+#include <solidmesh/mesh.h>
 
 int main()
 {
@@ -18,7 +19,7 @@ int main()
     VertexHandle v2 = replica.add_isolated_vertex(0.0, 1.0, 0.0);
     VertexHandle v3 = replica.add_isolated_vertex(0.0, 0.0, 1.0);
 
-    CellHandle tet = replica.add_tet({v0, v1, v2, v3});
+    CellHandle tet = replica.add_cell(CellType::TET, std::array{v0, v1, v2, v3});
 
     VertexHandle v4 = replica.add_isolated_vertex(1.0, 0.0, 1.0);
     VertexHandle v5 = replica.add_isolated_vertex(1.0, 1.0, 1.0);
@@ -27,11 +28,11 @@ int main()
 
     VertexHandle v8 = replica.add_isolated_vertex(1.0, 1.0, 2.0);
 
-    CellHandle hex = replica.add_hex({v0, v1, v7, v2, v3, v4, v5, v6});
-    // add_hex 接收固定长度的 std::array<VertexHandle, 8>。
+    // 先删除四面体，再用保留的顶点在同一区域插入六面体。
+    bool is_delete_cell_flag = replica.delete_cell(tet);
+    CellHandle hex = replica.add_cell(CellType::HEX, std::array{v0, v1, v7, v2, v3, v4, v5, v6});
 
     // 删 ==================================================
-    bool is_delete_cell_flag = replica.delete_cell(tet);
     bool is_delete_vertex_flag0 = replica.delete_isolated_vertex(v0); // 这些顶点仍然被hex使用，所以实际上并没有删除
     bool is_delete_vertex_flag1 = replica.delete_isolated_vertex(v2);
     bool is_delete_vertex_flag2 = replica.delete_isolated_vertex(v3);
@@ -49,8 +50,10 @@ int main()
     for(const auto& ch:replica.cells()){    // range for
         const Cell *cell = replica.cell(ch);
         for(const auto& hfh:cell->halffaces){   // 元素内链式查询
+            if (hfh.empty()) continue;
             const Halfface *hf = replica.halfface(hfh);
             for(const auto& deh:hf->dedges){
+                if (deh.empty()) continue;
                 const Dedge *de = replica.dedge(deh);
                 for(const auto& vh:{de->v0,de->v1}){
                     const Vertex *v = replica.vertex(vh);
@@ -65,7 +68,7 @@ int main()
     
     // 1-ring
     std::vector<VertexHandle> v1_adj_vertices = replica.vertex_vertices(v1);   
-    printf(" - v1 adjacent vertices num: %d", v1_adj_vertices.size());
+    std::cout << "v1 adjacent vertices: " << v1_adj_vertices.size() << '\n';
     //std::vector<CellHandle> e1_adj_cells = replica.edge_cells_ccw(e1_handle);
     // ...
 

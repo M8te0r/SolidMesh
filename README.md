@@ -1,6 +1,6 @@
 # DynamicSolidMesh
 
-一个 C++17 混合单元体积网格库，提供元素计数、孤立顶点与单元的增删、
+一个 C++20 混合单元体积网格库，提供元素计数、孤立顶点与单元的增删、
 handle 查询和遍历、深拷贝，以及顶点/边/单元邻接查询。
 支持 TET、HEX、PYRAMID，使用项目中的 `dod::slot_map64` 存储。
 
@@ -12,27 +12,27 @@ handle 查询和遍历、深拷贝，以及顶点/边/单元邻接查询。
 add_subdirectory(DynamicSolidMesh)
 
 add_executable(my_app main.cpp)
-target_link_libraries(my_app PRIVATE DynamicSolidMesh::DynamicSolidMesh)
+target_link_libraries(my_app PRIVATE SolidMesh::core)
 ```
 
 `add_subdirectory` 创建库目标，`target_link_libraries` 将库及其头文件路径、第三方依赖和
-C++17 要求传递给使用者，无需手动设置 include 路径或添加 `mesh.cpp`。
+C++20 要求传递给使用者，无需手动设置 include 路径或添加 `mesh.cpp`。
 
 在父项目的源文件中：
 
 ```cpp
-#include <DynamicSolidMesh/mesh.h>
+#include <solidmesh/mesh.h>
 
 int main()
 {
-    MyMesh::Mesh mesh;
+    SolidMesh::PolyhedraMesh mesh;
     auto vertex = mesh.add_isolated_vertex(0, 0, 0);
     return mesh.set_vertex_position(vertex, 1, 2, 3) ? 0 : 1;
 }
 ```
 
 库以静态库形式构建，并开启 PIC，可链接进可执行文件或父项目的动态库。
-`DynamicSolidMesh::DynamicSolidMesh` 是公开链接名称，实际构建目标为 `dynamic_solid_mesh`。
+`SolidMesh::core` 是公开链接名称，实际构建目标为 `SolidMeshCore`。
 构建只定义库目标，不添加示例、测试或基准程序，也不修改父项目的全局编译选项。
 
 若父项目已提供 `Eigen3::Eigen`，库会复用该目标；否则使用仓库中的 `third_party/eigen/` 子模块。
@@ -47,10 +47,10 @@ git submodule update --init --recursive
 ```text
 DynamicSolidMesh/
 ├── CMakeLists.txt
-├── include/DynamicSolidMesh/  # 公开头文件
+├── include/solidmesh/         # 公开头文件
 │   ├── mesh.h
 │   ├── mesh_element.h
-│   ├── mesh_element_template.h
+│   ├── cell_type.h
 │   └── handle.h
 ├── src/mesh.cpp               # 库实现
 ├── third_party/
@@ -68,7 +68,7 @@ cmake --build build --parallel 2
 
 ## 顶点编号和面方向
 
-坐标数值类型集中定义在 `include/DynamicSolidMesh/mesh_element.h`：
+坐标数值类型集中定义在 `include/solidmesh/mesh_element.h`：
 
 ```cpp
 using Real = double;
@@ -86,7 +86,7 @@ bool updated = mesh.set_vertex_position(v, 1, 2, 3);
 修改坐标不会改变 handle 或连接关系。无效 handle、NaN 或无穷坐标返回 `false`，
 原坐标保持不变；成功返回 `true`。
 
-所有面模板见 `include/DynamicSolidMesh/mesh_element_template.h`。
+所有面模板见 `include/solidmesh/cell_type.h` 中的 `CellTopology`。
 调用方应提供正向单元编号，面环从单元外侧看为逆时针。
 
 - TET：参考坐标依次为 `(0,0,0), (1,0,0), (0,1,0), (0,0,1)`。
@@ -94,25 +94,19 @@ bool updated = mesh.set_vertex_position(v, 1, 2, 3);
   上层 `4,5,6,7` 为对应点加 `(0,0,1)`。
 - PYRAMID：底面 `0,1,2,3` 同 HEX，`4` 为顶点，例如 `(.5,.5,1)`。
 
-插入接口按单元类型分开，顶点数组的长度由参数类型确定：
+三个单元类型共用一个插入接口，可传入 `std::array`、`std::vector` 或只读 span。
 
 ```cpp
-CellHandle add_hex(const std::array<VertexHandle, 8>& vertices,
-                   const std::array<std::array<int, 4>, 6>& order = CellOrderTemplate::hex_faces);
-CellHandle add_tet(const std::array<VertexHandle, 4>& vertices,
-                   const std::array<std::array<int, 3>, 4>& order = CellOrderTemplate::tet_faces);
-CellHandle add_pyramid(const std::array<VertexHandle, 5>& vertices,
-                       const std::array<std::array<int, 4>, 5>& order = CellOrderTemplate::pyramid_faces);
+CellHandle insert_cell(CellType type, std::span<const VertexHandle> vertices);
 ```
 
-例如 `mesh.add_tet({a, b, c, d})`，或 `mesh.add_hex(vertices, custom_order)`。
-`order` 中的整数是输入顶点数组的局部下标。每行定义一个有向面环；行顺序决定
-`Cell::halffaces` 的顺序，环内顺序决定 `Halfface::dedges` 的顺序。
-PYRAMID 的三角面以末尾 `-1` 补齐到四项，底面行可以放在任意位置。
+例如 `mesh.insert_cell(CellType::TET, std::array{a, b, c, d})`。
+传入的顶点按该类型的标准局部编号排列。`Cell::halffaces[fi]` 对应模板的第 `fi` 个面，
+`Halfface::dedges` 沿 `CellTopology::cell_face_order(type, fi)` 的顶点绕序排列。
+HEX 的底面是第 4 面，PYRAMID 的底面是第 0 面，面编号均从 0 开始。
 
-调用方负责提供该单元类型的合法、有向闭合模板，不对自定义模板执行下标或结构检查。
-顶点 handle 必须有效且互不重复。`std::array` 的花括号初始化若少给元素，剩余项会成为
-空 handle，仍会被有效性检查拒绝。连接通过相同的顶点 handle 表达，坐标重合不会自动焊接。
+类型不支持、顶点数与类型不符、顶点 handle 无效或重复时，插入在写入网格前返回空 handle。
+连接通过相同的顶点 handle 表达，坐标重合不会自动焊接。
 
 ## 存储及查询约定
 

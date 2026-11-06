@@ -6,7 +6,7 @@
 #include <SlotMap/slot_map.h>
 
 
-#include "mesh_element_template.h"
+#include "cell_type.h"
 
 namespace SolidMesh
 {
@@ -50,7 +50,7 @@ namespace SolidMesh
     struct Halfface
     {
         FaceType type = FaceType::UNSET;
-        std::array<DedgeHandle, 4> dedges;
+        std::array<DedgeHandle, CellTopology::max_face_vertex_count> dedges;
         CellHandle cell;
         HalffaceHandle opposite;
     };
@@ -58,6 +58,6 @@ namespace SolidMesh
     struct Cell
     {
         CellType type = CellType::UNSET;
-        std::array<HalffaceHandle, 6> halffaces;
+        std::array<HalffaceHandle, CellTopology::max_cell_face_count> halffaces;
     };
 }

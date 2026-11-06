@@ -4,6 +4,7 @@
 #include <cmath>
 #include <map>
 #include <set>
+#include <stdexcept>
 #include <utility>
 
 namespace SolidMesh
@@ -118,28 +119,37 @@ HalffaceHandle PolyhedraMesh::find_opposite(const std::vector<VertexHandle>& fac
     return {};
 }
 
-template <std::size_t V, std::size_t F, std::size_t E>
-CellHandle PolyhedraMesh::insert_cell(CellType type, const std::array<VertexHandle, V>& vertices,
-                             const std::array<std::array<int, E>, F>& order)
+CellHandle PolyhedraMesh::add_cell(CellType type, std::span<const VertexHandle> vertices)
 {
-    for (std::size_t i = 0; i < V; ++i)
-        if (!vertex(vertices[i]) ||
-            std::find(vertices.begin(), vertices.begin() + i, vertices[i]) != vertices.begin() + i)
+    // CellTopology 对不支持的类型抛出异常，插入接口统一返回空 handle。
+    try
+    {
+        if (vertices.size() != CellTopology::cell_vertex_count(type))
+            return {};
+    }
+    catch (const std::runtime_error&)
+    {
+        return {};
+    }
+    for (auto it = vertices.begin(); it != vertices.end(); ++it)
+        if (!vertex(*it) || std::find(vertices.begin(), it, *it) != it)
             return {};
 
     std::vector<VertexHandle> face;
-    face.reserve(E);
+    face.reserve(CellTopology::max_face_vertex_count);
     Cell value;
     value.type = type;
     const auto handle = CellHandle{cells_.emplace(value).raw};
     auto* added = cells_.get(CellStorage::key{handle.raw_});
-    for (std::size_t f = 0; f < F; ++f)
+    const auto face_count = CellTopology::cell_face_count(type);
+    for (std::size_t f = 0; f < face_count; ++f)
     {
+        // 将第 f 个面的局部顶点编号映射为该半面的有向顶点环。
         face.clear();
-        for (int index : order[f])
-            if (index >= 0) face.push_back(vertices[std::size_t(index)]);
+        for (int local_vertex : CellTopology::cell_face_order(type, f))
+            face.push_back(vertices[local_vertex]);
         Halfface half;
-        half.type = face.size() == 3 ? FaceType::TRIANGLE : FaceType::QUADRILATERAL;
+        half.type = CellTopology::cell_face_type(type, f);
         half.cell = handle;
         half.opposite = find_opposite(face);
 
@@ -165,24 +175,6 @@ CellHandle PolyhedraMesh::insert_cell(CellType type, const std::array<VertexHand
             halffaces_.get(HalffaceStorage::key{half.opposite.raw_})->opposite = h;
     }
     return handle;
-}
-
-CellHandle PolyhedraMesh::add_hex(const std::array<VertexHandle, 8>& vertices,
-                         const std::array<std::array<int, 4>, 6>& order)
-{
-    return insert_cell(CellType::HEX, vertices, order);
-}
-
-CellHandle PolyhedraMesh::add_tet(const std::array<VertexHandle, 4>& vertices,
-                         const std::array<std::array<int, 3>, 4>& order)
-{
-    return insert_cell(CellType::TET, vertices, order);
-}
-
-CellHandle PolyhedraMesh::add_pyramid(const std::array<VertexHandle, 5>& vertices,
-                             const std::array<std::array<int, 4>, 5>& order)
-{
-    return insert_cell(CellType::PYRAMID, vertices, order);
 }
 
 bool PolyhedraMesh::delete_cell(CellHandle handle)

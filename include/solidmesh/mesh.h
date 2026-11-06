@@ -1,6 +1,6 @@
 #pragma once
 #include "mesh_element.h"
-#include <array>
+#include <span>
 
 namespace SolidMesh
 {
@@ -33,16 +33,10 @@ namespace SolidMesh
         SizeType num_halffaces() const;
         SizeType num_cells() const;
 
-        // 无效 handle 返回空 handle / false；插入时也检查顶点是否重复。
-        // 调用方负责保证 order 合法，以及增删后的网格仍为共形流形。
-        // 不提供内存分配异常时的回滚保证。
         VertexHandle add_isolated_vertex(Real x, Real y, Real z);
-        CellHandle add_hex(const std::array<VertexHandle, 8>& vertices,
-                           const std::array<std::array<int, 4>, 6>& order = CellOrderTemplate::hex_faces);
-        CellHandle add_tet(const std::array<VertexHandle, 4>& vertices,
-                           const std::array<std::array<int, 3>, 4>& order = CellOrderTemplate::tet_faces);
-        CellHandle add_pyramid(const std::array<VertexHandle, 5>& vertices,
-                               const std::array<std::array<int, 4>, 5>& order = CellOrderTemplate::pyramid_faces);
+        // 顶点按 CellTopology 的局部编号排列。类型不支持、数量不符、handle 无效或重复时返回空 handle。
+        // 调用方负责保证增删后的网格仍为共形流形。内存分配异常时不保证回滚。
+        CellHandle add_cell(CellType type, std::span<const VertexHandle> vertices);
         bool delete_isolated_vertex(VertexHandle handle);
         bool delete_cell(CellHandle handle); // 清理无用边和半面，保留孤立顶点。
 
@@ -75,9 +69,6 @@ namespace SolidMesh
         std::vector<CellHandle> cell_cells(CellHandle handle) const; // cell
 
     private:
-        template <std::size_t V, std::size_t F, std::size_t E>
-        CellHandle insert_cell(CellType type, const std::array<VertexHandle, V>& vertices,
-                               const std::array<std::array<int, E>, F>& order);
         DedgeHandle find_dedge(VertexHandle source, VertexHandle target) const;
         HalffaceHandle find_opposite(const std::vector<VertexHandle>& face) const;
         void swap(PolyhedraMesh& other) noexcept;

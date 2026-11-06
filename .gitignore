@@ -5,4 +5,4 @@ bin/
 .vs/
 assets/
 .DS_Store/
-
+tests/
